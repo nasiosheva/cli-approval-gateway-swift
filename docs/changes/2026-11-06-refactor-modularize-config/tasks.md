@@ -1,59 +1,56 @@
 # Tasks: Refactor modularisasi + hilangkan hardcode
 
-Status keseluruhan: **belum dikerjakan** — ini baru rencana (plan), belum
-ada implementasi. Checklist di bawah adalah satu-satunya rencana
+Status keseluruhan: **implementasi selesai, verifikasi interaktif belum lengkap**. Build tiap tahap dan build akhir berhasil pada 2026-11-06; operator mengonfirmasi daftar tag sebelum dan sesudah refactor sama. Pengujian SSH, autentikasi, dan pemasangan binary tetap perlu diselesaikan. Checklist di bawah adalah satu-satunya rencana
 implementasi aktif untuk change ini (sesuai konvensi OpenSpec repo ini).
 
 ## 1. Persiapan
 
-- [ ] 1.1 Pastikan tidak ada gateway yang sedang berjalan sebelum mulai
+- [ ] 1.1 `pgrep` tidak dapat membaca daftar proses di lingkungan ini (sysmond tidak tersedia); perlu konfirmasi operator. Pastikan tidak ada gateway yang sedang berjalan sebelum mulai
       (`pgrep -fl "cli-approval-gateway/bin/cli-approval-gateway"`) —
       refactor hanya menyentuh source code, tapi build ulang perlu
       binary lama tidak dipakai sampai selesai diverifikasi.
-- [ ] 1.2 Catat hasil `pw list` (nama tag saja — operator yang jalankan,
+- [x] 1.2 Catat hasil `pw list` (nama tag saja — operator yang jalankan,
       bukan agent) SEBELUM refactor sebagai baseline, untuk dibandingkan
       lagi setelah refactor (harus identik).
-- [ ] 1.3 (Opsional, didiskusikan dulu dengan operator) kalau project ini
-      mau di-`git init` supaya rollback per-langkah lebih mudah — belum
-      ada keputusan, project ini belum punya git repo sama sekali.
+- [x] 1.3 Repository Git sudah dibuat dan baseline sudah di-commit.
 
 ## 2. Ekstrak `GatewayConfig` + hilangkan hardcode
 
-- [ ] 2.1 Buat `GatewayConfig.swift`, pindahkan `struct GatewayConfig`
+- [x] 2.1 Buat `GatewayConfig.swift`, pindahkan `struct GatewayConfig`
       dari `main.swift`.
-- [ ] 2.2 Tambah static constant: `defaultSSHHost`, `baseDirName`,
+- [x] 2.2 Tambah static constant: `defaultSSHHost`, `baseDirName`,
       `keychainServiceName`, `defaultPollIntervalSeconds` (lihat
       `design.md` untuk nilai persisnya — harus SAMA dengan nilai
       hardcode saat ini, supaya tidak ada perubahan behavior).
-- [ ] 2.3 Tambah pembacaan env var baru (`GATEWAY_POLL_INTERVAL_SECONDS`,
+- [x] 2.3 Tambah pembacaan env var baru (`GATEWAY_POLL_INTERVAL_SECONDS`,
       `GATEWAY_BASE_DIR_NAME`, `GATEWAY_KEYCHAIN_SERVICE_NAME`) dengan
       fallback ke constant masing-masing.
-- [ ] 2.4 Build (`xcodebuild ... build`) — harus sukses.
+- [x] 2.4 Build (`xcodebuild ... build`) — harus sukses.
 - [ ] 2.5 Jalankan gateway, kirim 1 request ringan (`echo ...`), approve,
       cek response `approved:true, exitCode:0` — bandingkan dengan
       baseline sebelum refactor.
 
 ## 3. Ekstrak `AuditLog`, `ApprovalGate`, `SecretStore`, `SecureInput`
 
-- [ ] 3.1 Buat `AuditLog.swift` (pindahkan `AuditEntry`, `AuditLogger`).
-- [ ] 3.2 Buat `ApprovalGate.swift` (pindahkan `ApprovalGate`).
-- [ ] 3.3 Buat `SecretStore.swift` (pindahkan `SecretStoreError`,
+- [x] 3.1 Buat `AuditLog.swift` (pindahkan `AuditEntry`, `AuditLogger`).
+- [x] 3.2 Buat `ApprovalGate.swift` (pindahkan `ApprovalGate`).
+- [x] 3.3 Buat `SecretStore.swift` (pindahkan `SecretStoreError`,
       `SecretStore`) — `service` baca dari
       `GatewayConfig.keychainServiceName`.
-- [ ] 3.4 Buat `SecureInput.swift` (pindahkan `readSecret(prompt:)`).
-- [ ] 3.5 Build — harus sukses.
-- [ ] 3.6 Operator jalankan `pw list` sendiri di terminalnya, bandingkan
+- [x] 3.4 Buat `SecureInput.swift` (pindahkan `readSecret(prompt:)`).
+- [x] 3.5 Build — harus sukses.
+- [x] 3.6 Operator jalankan `pw list` sendiri di terminalnya, bandingkan
       nama tag dengan baseline task 1.2 — harus identik (service name
       Keychain tidak berubah).
 
 ## 4. Ekstrak `PlaceholderResolver`, `SSHExecutor`
 
-- [ ] 4.1 Buat `PlaceholderResolver.swift` (pindahkan
+- [x] 4.1 Buat `PlaceholderResolver.swift` (pindahkan
       `passwordPlaceholderPattern`, `resolvePlaceholders`,
       `hostDirectivePattern`, `targetHost(for:default:)`).
-- [ ] 4.2 Buat `SSHExecutor.swift` (pindahkan `CommandResult`,
+- [x] 4.2 Buat `SSHExecutor.swift` (pindahkan `CommandResult`,
       `SSHExecutor`).
-- [ ] 4.3 Build — harus sukses.
+- [x] 4.3 Build — harus sukses.
 - [ ] 4.4 Kirim request dengan placeholder `{{pw:sudo}}` (command yang
       sudah pernah diuji sebelumnya, misalnya cek versi PHP via `sudo`)
       — approve, pastikan `sudo -S` masih bekerja non-interaktif seperti
@@ -61,10 +58,10 @@ implementasi aktif untuk change ini (sesuai konvensi OpenSpec repo ini).
 
 ## 5. Ekstrak `RequestProcessor`, `PasswordCLI`
 
-- [ ] 5.1 Buat `RequestProcessor.swift` (pindahkan `writeResponse`,
+- [x] 5.1 Buat `RequestProcessor.swift` (pindahkan `writeResponse`,
       `processRequest`).
-- [ ] 5.2 Buat `PasswordCLI.swift` (pindahkan `runPasswordSubcommand`).
-- [ ] 5.3 Build — harus sukses.
+- [x] 5.2 Buat `PasswordCLI.swift` (pindahkan `runPasswordSubcommand`).
+- [x] 5.3 Build — harus sukses.
 - [ ] 5.4 Operator uji `pw add`/`pw edit`/`pw show`/`pw reveal`/
       `pw remove` sendiri di terminalnya (pakai tag uji, BUKAN tag
       production seperti `sudo`/`DBdev`/`DBprod`) — pastikan semua
@@ -73,9 +70,9 @@ implementasi aktif untuk change ini (sesuai konvensi OpenSpec repo ini).
 
 ## 6. Sisakan `main.swift` hanya entry point
 
-- [ ] 6.1 Hapus semua definisi type/function dari `main.swift`, sisakan
+- [x] 6.1 Hapus semua definisi type/function dari `main.swift`, sisakan
       hanya instansiasi + percabangan subcommand + loop watcher.
-- [ ] 6.2 Build final — harus sukses, tanpa warning baru.
+- [x] 6.2 Build final — harus sukses, tanpa warning baru.
 - [ ] 6.3 Copy binary baru ke `~/.cli-approval-gateway/bin/cli-approval-gateway`.
 
 ## 7. Verifikasi ulang skenario inti (regresi)

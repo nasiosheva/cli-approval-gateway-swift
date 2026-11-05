@@ -44,7 +44,14 @@ Jalankan watcher di terminal operator:
 GATEWAY_SSH_HOST=nama-host-ssh cli-approval-gateway
 ```
 
-`GATEWAY_SSH_HOST` menentukan host default; jika tidak diisi, kode menggunakan `pe-server`. Watcher berjalan di foreground dan memeriksa request setiap detik. Biarkan terminal terbuka selama digunakan, lalu tekan `Ctrl+C` untuk menghentikannya. Gateway tidak dikonfigurasi untuk berjalan otomatis saat login.
+`GATEWAY_SSH_HOST` menentukan host default; jika tidak diisi, kode menggunakan `pe-server`. Watcher berjalan di foreground. Biarkan terminal terbuka selama digunakan, lalu tekan `Ctrl+C` untuk menghentikannya. Gateway tidak dikonfigurasi untuk berjalan otomatis saat login.
+
+| Environment variable | Default | Fungsi |
+| --- | --- | --- |
+| `GATEWAY_SSH_HOST` | `pe-server` | Host SSH default. |
+| `GATEWAY_BASE_DIR_NAME` | `.cli-approval-gateway` | Nama direktori data di bawah home. |
+| `GATEWAY_POLL_INTERVAL_SECONDS` | `1.0` | Interval polling positif dalam detik; nilai tidak valid memakai default. |
+| `GATEWAY_KEYCHAIN_SERVICE_NAME` | `com.cli-approval-gateway.secrets` | Nama service Keychain. Mengubahnya membuat tag pada service lama tidak terlihat sampai nama semula digunakan kembali. |
 
 Saat dimulai, gateway membuat direktori berikut di `~/.cli-approval-gateway/`:
 
@@ -125,7 +132,7 @@ Gateway tidak menyediakan identitas atau otorisasi khusus per agent; akses ke fo
 
 ## Struktur proyek
 
-- `cli-approval-gateway/main.swift` — implementasi gateway dan CLI.
+- `cli-approval-gateway/` — entry point dan modul konfigurasi, autentikasi, Keychain, SSH, serta pemrosesan request.
 - `cli-approval-gateway.xcodeproj/` — proyek Xcode.
 - `docs/changes/` — proposal, desain, spesifikasi, dan catatan tugas.
 - `personal-docs/` — catatan operasional lokal yang dikecualikan dari Git.

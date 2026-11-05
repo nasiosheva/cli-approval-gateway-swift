@@ -1,0 +1,5 @@
+schema: spec-driven
+id: 2026-11-05-cli-approval-gateway-v1
+title: "CLI Approval Gateway v1 - watcher + Touch ID + password store"
+status: in_progress
+skip_specs: false

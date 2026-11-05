@@ -1,0 +1,5 @@
+schema: spec-driven
+id: 2026-11-06-refactor-modularize-config
+title: "Refactor: pecah main.swift jadi beberapa file + hilangkan nilai hardcode"
+status: planned
+skip_specs: false

@@ -1,0 +1,16 @@
+/personal-docs/
+
+# Xcode user settings and build products
+xcuserdata/
+DerivedData/
+build/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+
+# Swift Package Manager local state
+.build/
+.swiftpm/
+
+# macOS
+.DS_Store

@@ -4,6 +4,8 @@ CLI Approval Gateway adalah aplikasi command-line macOS yang menerima permintaan
 
 Gateway juga menyediakan penyimpanan password bertag di macOS Keychain dan substitusi placeholder saat command disiapkan untuk SSH. Proyek ini masih dalam pengembangan; tinjau batasan keamanan di bawah sebelum menggunakannya untuk sistem penting.
 
+Binary-nya mendokumentasikan dirinya sendiri — jalankan `cli-approval-gateway --help` untuk ringkasan protokol request/response, subcommand, env var, dan peringatan keamanan, tanpa perlu membaca README ini (berguna untuk agent/sesi lain yang hanya punya akses ke binary).
+
 ## Persyaratan
 
 - macOS dengan Xcode dan command-line tools terpasang.

@@ -36,6 +36,19 @@ if arguments.count > 1, arguments[1] == "selftest" {
 }
 
 let config = GatewayConfig.load()
+
+// Lock harus diambil sebelum apa pun lain (termasuk recovery) supaya dua
+// instance yang start bersamaan terhadap base dir yang sama tidak bisa
+// berdua-dua masuk ke loop/recovery. fd sengaja TIDAK ditutup — lock
+// terikat ke file descriptor ini dan harus tetap terbuka sepanjang hidup
+// proses; ditutup otomatis oleh OS saat proses berhenti.
+do {
+    _ = try acquireSingleInstanceLock(at: config.lockFileURL)
+} catch {
+    FileHandle.standardError.write("Gagal start: \(error)\nAda instance gateway lain yang sudah berjalan untuk \(config.baseDir.path). Hentikan instance itu dulu (lihat 'ps aux | grep cli-approval-gateway') sebelum menjalankan yang baru.\n".data(using: .utf8)!)
+    exit(1)
+}
+
 let executor = SSHExecutor()
 let logger = AuditLogger(url: config.auditLogURL)
 

@@ -20,6 +20,7 @@ struct GatewayConfig {
     let responsesDir: URL
     let processedDir: URL
     let auditLogURL: URL
+    let lockFileURL: URL
     let sshHost: String
     let pollIntervalSeconds: TimeInterval
 
@@ -32,6 +33,7 @@ struct GatewayConfig {
         let responses = base.appendingPathComponent("responses", isDirectory: true)
         let processed = base.appendingPathComponent("processed", isDirectory: true)
         let audit = base.appendingPathComponent("audit.log")
+        let lock = base.appendingPathComponent("watcher.lock")
 
         for dir in [base, requests, processing, responses, processed] {
             try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -45,6 +47,7 @@ struct GatewayConfig {
             responsesDir: responses,
             processedDir: processed,
             auditLogURL: audit,
+            lockFileURL: lock,
             sshHost: host,
             pollIntervalSeconds: ProcessInfo.processInfo.environment["GATEWAY_POLL_INTERVAL_SECONDS"].flatMap(TimeInterval.init).flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? defaultPollIntervalSeconds
         )

@@ -96,7 +96,7 @@ final class SecretStore {
     /// level kode kita — item Keychain-nya sendiri tidak punya ACL
     /// biometrik (lihat catatan di `add`), jadi gate ini WAJIB lolos
     /// dulu sebelum `SecItemCopyMatching` dipanggil.
-    func resolve(tag: String, reason: String, gate: ApprovalGate) throws -> String {
+    func resolve(tag: String, reason: String, gate: ApprovalGating) throws -> String {
         guard gate.approve(reason: reason) else {
             throw SecretStoreError.approvalDenied(tag)
         }

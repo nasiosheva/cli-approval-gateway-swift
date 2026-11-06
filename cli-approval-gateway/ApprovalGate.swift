@@ -5,7 +5,16 @@ import LocalAuthentication
 
 // MARK: - Approval gate (Touch ID / Face ID)
 
-final class ApprovalGate {
+/// Abstraksi approval supaya alur klaim/eksekusi/recovery di
+/// `RequestProcessor` dapat diuji dengan test double (lihat
+/// `IntegrationSelfTest.swift`) tanpa memicu dialog Touch ID/Face ID asli.
+/// `ApprovalGate` di bawah adalah satu-satunya implementasi yang dipakai
+/// gateway sungguhan.
+protocol ApprovalGating {
+    func approve(reason: String) -> Bool
+}
+
+final class ApprovalGate: ApprovalGating {
     /// Blocks until the operator approves/denies via Touch ID/Face ID,
     /// or until biometric auth is unavailable (falls back to device password
     /// via LAContext's own fallback UI).

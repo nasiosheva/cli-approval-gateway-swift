@@ -40,7 +40,7 @@ let passwordPlaceholderPattern = try! NSRegularExpression(pattern: "\\{\\{pw:([A
 /// password dengan tag `<tag>@<host>` (mis. `pw add sudo@server-2`) untuk
 /// server yang punya password berbeda — tidak perlu prompt interaktif
 /// terpisah, karena host request sudah menentukan tag mana yang dipakai.
-func resolvePlaceholders(in command: String, host: String, using store: SecretStore, gate: ApprovalGate) throws -> String {
+func resolvePlaceholders(in command: String, host: String, using store: SecretStore, gate: ApprovalGating) throws -> String {
     var resolved = command
     let nsRange = NSRange(command.startIndex..., in: command)
     let matches = passwordPlaceholderPattern.matches(in: command, range: nsRange)

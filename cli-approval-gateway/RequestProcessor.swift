@@ -116,7 +116,7 @@ func claimRequest(fileURL: URL, config: GatewayConfig) -> URL? {
 
 /// Pindahkan satu file request kandidat dari `requests/` ke pemrosesan penuh.
 /// Menangani deteksi ID duplikat lalu klaim atomik sebelum approval.
-func handleCandidateRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGate, executor: SSHExecutor, logger: AuditLogger, secrets: SecretStore) {
+func handleCandidateRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGating, executor: CommandExecuting, logger: AuditLogger, secrets: SecretStore) {
     let id = fileURL.deletingPathExtension().lastPathComponent
 
     if requestIDHasExistingState(id, config: config) {
@@ -149,7 +149,7 @@ func finalizeProcessing(id: String, fileURL: URL, config: GatewayConfig) {
 
 // MARK: - Request processing (request sudah diklaim, berada di processing/)
 
-func processClaimedRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGate, executor: SSHExecutor, logger: AuditLogger, secrets: SecretStore) {
+func processClaimedRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGating, executor: CommandExecuting, logger: AuditLogger, secrets: SecretStore) {
     let id = fileURL.deletingPathExtension().lastPathComponent
 
     guard let rawCommand = try? String(contentsOf: fileURL, encoding: .utf8) else {

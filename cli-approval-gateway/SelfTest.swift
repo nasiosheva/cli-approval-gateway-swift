@@ -69,13 +69,15 @@ func runSSHDrainSelfTest() -> Bool {
 
 func runSelfTestSubcommand(_ args: [String]) -> Never {
     guard let name = args.first else {
-        FileHandle.standardError.write("Penggunaan: cli-approval-gateway selftest ssh-drain\n".data(using: .utf8)!)
+        FileHandle.standardError.write("Penggunaan: cli-approval-gateway selftest ssh-drain|lifecycle\n".data(using: .utf8)!)
         exit(2)
     }
 
     switch name {
     case "ssh-drain":
         exit(runSSHDrainSelfTest() ? 0 : 1)
+    case "lifecycle":
+        exit(runLifecycleSelfTest() ? 0 : 1)
     default:
         FileHandle.standardError.write("Self-test tidak dikenal: \(name)\n".data(using: .utf8)!)
         exit(2)

@@ -33,19 +33,20 @@ let passwordPlaceholderPattern = try! NSRegularExpression(pattern: "\\{\\{pw:([A
 /// selesai ditampilkan/di-log, supaya password tidak pernah masuk ke
 /// terminal history atau audit log.
 ///
-/// Resolusi tag sadar-host: untuk `{{pw:sudo}}` di request bertarget host
-/// `server-2`, gateway coba tag `sudo@server-2` dulu (dicek lewat
-/// `listTags()`, TANPA memicu approval), baru fallback ke tag polos
-/// `sudo` kalau versi host-scoped tidak ada. Jadi operator cukup simpan
-/// password dengan tag `<tag>@<host>` (mis. `pw add sudo@server-2`) untuk
-/// server yang punya password berbeda — tidak perlu prompt interaktif
-/// terpisah, karena host request sudah menentukan tag mana yang dipakai.
+/// Resolusi tag sadar-host via bundle: untuk `{{pw:sudo}}` di request
+/// bertarget host `server-2`, gateway cek dulu apakah bundle `server-2`
+/// punya tag `sudo` (lewat `listTags()`, TANPA memicu approval), kalau ada
+/// pakai itu; kalau tidak, fallback ke bundle `default`. Jadi operator
+/// cukup simpan password dengan `pw add sudo --host server-2` untuk server
+/// yang punya password berbeda, atau `pw add sudo --host default` untuk
+/// password yang sama di semua host — tidak perlu prompt interaktif
+/// terpisah, karena bundle yang dipakai sudah ditentukan sebelum approval.
 func resolvePlaceholders(in command: String, host: String, using store: SecretStore, gate: ApprovalGating) throws -> String {
     var resolved = command
     let nsRange = NSRange(command.startIndex..., in: command)
     let matches = passwordPlaceholderPattern.matches(in: command, range: nsRange)
     var cache: [String: String] = [:]
-    let existingTags = (try? store.listTags()) ?? []
+    let hostBundleTags = (try? store.listTags(bundle: host)) ?? []
 
     for match in matches.reversed() {
         guard let tagRange = Range(match.range(at: 1), in: command) else { continue }
@@ -55,9 +56,8 @@ func resolvePlaceholders(in command: String, host: String, using store: SecretSt
         if let cached = cache[tag] {
             secret = cached
         } else {
-            let scopedTag = "\(tag)@\(host)"
-            let tagToUse = existingTags.contains(scopedTag) ? scopedTag : tag
-            secret = try store.resolve(tag: tagToUse, reason: "Ambil password '\(tagToUse)' untuk eksekusi command gateway di \(host)", gate: gate)
+            let bundle = hostBundleTags.contains(tag) ? host : SecretStore.defaultBundle
+            secret = try store.resolve(tag: tag, bundle: bundle, reason: "Ambil password '\(tag)' (bundle '\(bundle)') untuk eksekusi command gateway di \(host)", gate: gate)
             cache[tag] = secret
         }
 

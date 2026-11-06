@@ -51,7 +51,10 @@ private struct LifecycleTestContext {
         return LifecycleTestContext(
             config: config,
             logger: AuditLogger(url: config.auditLogURL),
-            secrets: SecretStore(service: "com.cli-approval-gateway.selftest.\(UUID().uuidString)")
+            secrets: SecretStore(
+                baseService: "com.cli-approval-gateway.selftest.\(UUID().uuidString)",
+                registryURL: base.appendingPathComponent("secret-bundles.json")
+            )
         )
     }
 

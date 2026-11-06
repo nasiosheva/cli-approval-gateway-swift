@@ -14,6 +14,15 @@ struct GatewayConfig {
         ProcessInfo.processInfo.environment["GATEWAY_KEYCHAIN_SERVICE_NAME"] ?? keychainServiceName
     }
 
+    /// Lokasi base dir TANPA efek samping (tidak membuat direktori apa
+    /// pun) — dipakai untuk membangun path registry bundle password
+    /// sebelum `load()` (yang membuat semua subfolder watcher) dipanggil,
+    /// supaya subcommand `pw` saja tidak ikut membuat `requests/` dkk.
+    static func defaultBaseDirURL() -> URL {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        return home.appendingPathComponent(ProcessInfo.processInfo.environment["GATEWAY_BASE_DIR_NAME"] ?? baseDirName, isDirectory: true)
+    }
+
     let baseDir: URL
     let requestsDir: URL
     let processingDir: URL
@@ -26,8 +35,7 @@ struct GatewayConfig {
 
     static func load() -> GatewayConfig {
         let fm = FileManager.default
-        let home = fm.homeDirectoryForCurrentUser
-        let base = home.appendingPathComponent(ProcessInfo.processInfo.environment["GATEWAY_BASE_DIR_NAME"] ?? baseDirName, isDirectory: true)
+        let base = defaultBaseDirURL()
         let requests = base.appendingPathComponent("requests", isDirectory: true)
         let processing = base.appendingPathComponent("processing", isDirectory: true)
         let responses = base.appendingPathComponent("responses", isDirectory: true)

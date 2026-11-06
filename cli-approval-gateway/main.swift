@@ -41,7 +41,10 @@ func printTopLevelHelp() {
          tambahan (lihat di bawah). `approved: true` BUKAN berarti
          command berhasil — selalu cek juga `exitCode`.
       4. Untuk password di command, pakai placeholder `{{pw:tag}}` —
-         JANGAN PERNAH menaruh password asli di command.
+         JANGAN PERNAH menaruh password asli di command. Gateway resolve
+         `{{pw:tag}}` ke bundle password milik host request itu dulu,
+         baru fallback ke bundle 'default' kalau tag tidak ada di bundle
+         host tersebut. Operator yang mengisi bundle via 'pw add'.
 
       Default folder data: `~/.cli-approval-gateway/` (override lewat
       env `GATEWAY_BASE_DIR_NAME`). Subfolder: `requests/`, `processing/`
@@ -66,14 +69,19 @@ func printTopLevelHelp() {
       GATEWAY_KEYCHAIN_SERVICE_NAME   Nama service Keychain untuk 'pw' (fallback: com.cli-approval-gateway.secrets)
 
     PERINGATAN KEAMANAN UNTUK AGENT: JANGAN PERNAH menjalankan
-    `cli-approval-gateway pw reveal <tag>` atau `pw list`/`pw show` secara
-    otomatis — output-nya bisa memuat atau mengindikasikan data sensitif.
-    Perintah 'pw' (selain untuk membuat tag lewat 'add') hanya untuk
-    dijalankan langsung oleh operator manusia di terminalnya sendiri.
+    `cli-approval-gateway pw reveal <tag> --host <host>` atau
+    `pw list`/`pw show` secara otomatis — output-nya bisa memuat atau
+    mengindikasikan data sensitif. Perintah 'pw' (selain untuk membuat tag
+    lewat 'add') hanya untuk dijalankan langsung oleh operator manusia di
+    terminalnya sendiri. Jalankan 'cli-approval-gateway pw' tanpa argumen
+    untuk detail lengkap tiap aksi 'pw' (termasuk 'migrate-bundles').
     """)
 }
 
-let secretStore = SecretStore(service: GatewayConfig.configuredKeychainServiceName)
+let secretStore = SecretStore(
+    baseService: GatewayConfig.configuredKeychainServiceName,
+    registryURL: GatewayConfig.defaultBaseDirURL().appendingPathComponent("secret-bundles.json")
+)
 let gate = ApprovalGate()
 let arguments = CommandLine.arguments
 
@@ -113,7 +121,7 @@ print("Processing folder: \(config.processingDir.path)")
 print("Responses folder : \(config.responsesDir.path)")
 print("Audit log        : \(config.auditLogURL.path)")
 print("SSH host default : \(config.sshHost) (override per-request lewat baris pertama '#GATEWAY-HOST: <host>')")
-print("Kelola password  : cli-approval-gateway pw add|list|remove <tag>  (tag host-scoped: <tag>@<host>)")
+print("Kelola password  : cli-approval-gateway pw add|list|remove <tag> --host <host>  ('default' untuk bundle fallback)")
 print("Placeholder      : pakai {{pw:<tag>}} di dalam command untuk substitusi password")
 print("Tekan Ctrl-C untuk berhenti.\n")
 

@@ -63,6 +63,8 @@ Saat dimulai, gateway membuat direktori berikut di `~/.cli-approval-gateway/`:
 | `processed/` | File request yang sudah mencapai status terminal (response tersimpan). |
 | `audit.log` | Catatan transaksi dalam format JSON Lines. |
 
+Gateway mengambil lock eksklusif (`watcher.lock` di base dir) begitu start. Instance kedua yang dijalankan terhadap base dir yang sama (sengaja atau tidak sengaja, misalnya dari sesi terminal/agent lain) langsung keluar dengan exit code 1 dan pesan error, bukan berjalan diam-diam sebagai watcher kedua. Lock otomatis terlepas saat proses berhenti dengan cara apa pun (termasuk crash atau `kill -9`) — tidak ada lock basi yang perlu dibersihkan manual.
+
 Setiap ID request hanya boleh diklaim dan dieksekusi sekali. Gateway mengklaim request dengan rename atomik `requests/<id>.sh` → `processing/<id>.sh`; jika dua watcher melihat file yang sama, hanya satu yang berhasil memindahkannya sehingga paling banyak satu approval dan satu eksekusi SSH terjadi. Request dengan ID yang sudah ada di `processing/`, `processed/`, atau `responses/` ditolak otomatis dengan response `status: "duplicate-id-rejected"` tanpa approval atau eksekusi ulang — gunakan ID baru untuk percobaan ulang.
 
 ## Membuat request

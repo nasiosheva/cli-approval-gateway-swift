@@ -187,9 +187,10 @@ cli-approval-gateway pw show sudo --host pe-server      # periksa apakah tag ada
 cli-approval-gateway pw reveal sudo --host pe-server    # tampilkan nilai setelah autentikasi
 cli-approval-gateway pw remove sudo --host pe-server    # hapus tag dari bundle
 cli-approval-gateway pw delete sudo --host pe-server    # alias remove
+cli-approval-gateway pw rename db_prod db_prod_readonly_password --host pe-server  # ganti nama tag, nilai password tetap sama
 ```
 
-`reveal` mencetak password ke stdout: gunakan hanya secara langsung oleh operator di terminal yang aman, bukan melalui tool agent atau di chat. `add` dan `edit` mengganti nilai tag yang sudah ada di bundle yang sama.
+`reveal` mencetak password ke stdout: gunakan hanya secara langsung oleh operator di terminal yang aman, bukan melalui tool agent atau di chat. `add` dan `edit` mengganti nilai tag yang sudah ada di bundle yang sama. `rename` memindahkan nama tag lama ke nama baru dalam bundle yang sama tanpa membaca atau mengubah password; perintah gagal jika tag lama tidak ditemukan atau nama baru sudah dipakai.
 
 ### Placeholder dan password per host
 

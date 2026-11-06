@@ -24,6 +24,7 @@ func runPasswordSubcommand(_ args: [String], store: SecretStore, gate: ApprovalG
         Penggunaan (per BUNDLE, satu bundle = satu host; bundle 'default' = fallback lintas-host):
           cli-approval-gateway pw add <tag> --host <host>     Tambah/ubah password dengan tag di bundle <host>
           cli-approval-gateway pw edit <tag> --host <host>    Alias untuk add
+          cli-approval-gateway pw rename <tag-lama> <tag-baru> --host <host>  Ganti nama tag tanpa mengubah password
           cli-approval-gateway pw show <tag> --host <host>    Cek apakah tag tersimpan di bundle (TIDAK menampilkan nilai)
           cli-approval-gateway pw list                        Daftar SEMUA bundle dan NAMA tag di tiap bundle (TIDAK menampilkan nilai)
           cli-approval-gateway pw list --host <host>          Daftar NAMA tag di SATU bundle saja
@@ -91,6 +92,20 @@ func runPasswordSubcommand(_ args: [String], store: SecretStore, gate: ApprovalG
             exit(0)
         } catch {
             print("Gagal cek tag '\(tag)' di bundle '\(host)': \(error)")
+            exit(1)
+        }
+
+    case "rename":
+        guard positional.count > 2 else { usageAndExit() }
+        let oldTag = positional[1]
+        let newTag = positional[2]
+        let host = requireHost()
+        do {
+            try store.renameTag(from: oldTag, to: newTag, bundle: host)
+            print("Nama tag diubah dari '\(oldTag)' menjadi '\(newTag)' di bundle '\(host)'.")
+            exit(0)
+        } catch {
+            print("Gagal mengubah nama tag '\(oldTag)' di bundle '\(host)': \(error)")
             exit(1)
         }
 

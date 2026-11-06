@@ -16,6 +16,7 @@ import Security
 enum SecretStoreError: Error, CustomStringConvertible {
     case osStatus(OSStatus)
     case notFound(String, bundle: String)
+    case tagAlreadyExists(String, bundle: String)
     case approvalDenied(String)
     case invalidData
     case registryIOError(Error)
@@ -26,6 +27,8 @@ enum SecretStoreError: Error, CustomStringConvertible {
             return (SecCopyErrorMessageString(status, nil) as String?) ?? "keychain error status \(status)"
         case .notFound(let tag, let bundle):
             return "Tag '\(tag)' tidak ditemukan di bundle '\(bundle)'."
+        case .tagAlreadyExists(let tag, let bundle):
+            return "Tag '\(tag)' sudah ada di bundle '\(bundle)'."
         case .approvalDenied(let tag):
             return "Approval Touch ID/Face ID untuk tag '\(tag)' ditolak/gagal."
         case .invalidData:
@@ -93,6 +96,19 @@ final class SecretStore {
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw SecretStoreError.osStatus(status)
         }
+    }
+
+    func renameTag(from oldTag: String, to newTag: String, bundle: String) throws {
+        let tags = try listTags(bundle: bundle)
+        guard tags.contains(oldTag) else { throw SecretStoreError.notFound(oldTag, bundle: bundle) }
+        guard !tags.contains(newTag) else { throw SecretStoreError.tagAlreadyExists(newTag, bundle: bundle) }
+
+        let query = baseQuery(bundle: bundle, tag: oldTag)
+        let attributes = [kSecAttrAccount as String: newTag]
+        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound { throw SecretStoreError.notFound(oldTag, bundle: bundle) }
+        if status == errSecDuplicateItem { throw SecretStoreError.tagAlreadyExists(newTag, bundle: bundle) }
+        guard status == errSecSuccess else { throw SecretStoreError.osStatus(status) }
     }
 
     func listTags(bundle: String) throws -> [String] {

@@ -136,31 +136,43 @@ Prosedur sebelum mengirim ulang request (dengan ID baru) setelah melihat `execut
 
 Pesan error terkait tahap klaim, status, response, audit, atau pemindahan file dicetak ke stderr terminal operator dengan format `[<id>] ERROR tahap=<tahap>: <pesan>`. Bila penulisan response gagal setelah SSH selesai, request **tetap** berada di `processing/` (tidak dipindahkan ke `processed/` dan tidak dikembalikan ke `requests/`) sampai diperiksa dan dibersihkan secara manual oleh operator — gateway tidak akan memungutnya lagi sebagai pending.
 
-## Mengelola password
+## Mengelola password (per bundle/host)
 
-Jalankan perintah berikut di terminal operator. Input password untuk `add` dan `edit` tidak ditampilkan saat diketik.
+Password disimpan per **bundle** — satu bundle = satu host (misalnya `pe-server`, `server-2`), dipisah penuh di Keychain (bukan sekadar penamaan tag). Bundle khusus bernama `default` dipakai sebagai fallback lintas-host untuk password yang sama di semua server. `--host` wajib di setiap aksi (kecuali `list` tanpa argumen dan `migrate-bundles`). Input password untuk `add` dan `edit` tidak ditampilkan saat diketik.
 
 ```bash
-cli-approval-gateway pw add sudo       # tambah atau ganti nilai
-cli-approval-gateway pw edit sudo      # alias add
-cli-approval-gateway pw list           # hanya nama tag
-cli-approval-gateway pw show sudo      # periksa apakah tag ada
-cli-approval-gateway pw reveal sudo    # tampilkan nilai setelah autentikasi
-cli-approval-gateway pw remove sudo    # hapus tag
-cli-approval-gateway pw delete sudo    # alias remove
+cli-approval-gateway pw add sudo --host pe-server      # tambah/ganti nilai di bundle 'pe-server'
+cli-approval-gateway pw add sudo --host default        # password sama untuk semua host tanpa bundle sendiri
+cli-approval-gateway pw edit sudo --host pe-server      # alias add
+cli-approval-gateway pw list                           # semua bundle + nama tag di tiap bundle
+cli-approval-gateway pw list --host pe-server           # nama tag di satu bundle saja
+cli-approval-gateway pw show sudo --host pe-server      # periksa apakah tag ada di bundle itu
+cli-approval-gateway pw reveal sudo --host pe-server    # tampilkan nilai setelah autentikasi
+cli-approval-gateway pw remove sudo --host pe-server    # hapus tag dari bundle
+cli-approval-gateway pw delete sudo --host pe-server    # alias remove
 ```
 
-`reveal` mencetak password ke stdout: gunakan hanya secara langsung oleh operator di terminal yang aman, bukan melalui tool agent atau di chat. `add` dan `edit` mengganti nilai tag yang sudah ada.
+`reveal` mencetak password ke stdout: gunakan hanya secara langsung oleh operator di terminal yang aman, bukan melalui tool agent atau di chat. `add` dan `edit` mengganti nilai tag yang sudah ada di bundle yang sama.
 
 ### Placeholder dan password per host
 
-Gunakan `{{pw:tag}}` dalam file request; gateway menggantinya di memori setelah autentikasi dan sebelum mengirim script ke SSH. Nama tag dalam placeholder mendukung huruf, angka, `_`, dan `-`. Untuk request ke `server-2`, placeholder `{{pw:sudo}}` terlebih dahulu mencari tag `sudo@server-2`, lalu menggunakan `sudo` jika tag khusus host tidak ditemukan. Simpan nilai khusus host misalnya dengan:
+Gunakan `{{pw:tag}}` dalam file request; gateway menggantinya di memori setelah autentikasi dan sebelum mengirim script ke SSH. Nama tag dalam placeholder mendukung huruf, angka, `_`, dan `-`. Untuk request ke host `server-2`, gateway cek dulu apakah bundle `server-2` punya tag tersebut; kalau tidak ada, fallback ke bundle `default`. Simpan nilai khusus host misalnya dengan:
 
 ```bash
-cli-approval-gateway pw add 'sudo@server-2'
+cli-approval-gateway pw add sudo --host server-2
 ```
 
 Substitusi adalah penggantian teks mentah, bukan escaping shell. Karakter khusus dalam password dapat mengubah sintaks atau perilaku script. Command yang mencetak atau menyimpan password juga dapat membocorkannya melalui output, server, atau file respons; rancang dan tinjau command dengan hati-hati.
+
+### Migrasi dari skema tag lama
+
+Versi sebelumnya menyimpan password sebagai tag polos (fallback global) atau `tag@host` (host-scoped) dalam satu Keychain service besar. Kalau kamu masih punya tag dari skema itu, pindahkan sekali dengan:
+
+```bash
+cli-approval-gateway pw migrate-bundles
+```
+
+Ini memindahkan tiap `tag@host` ke bundle `host`, tiap tag polos ke bundle `default`, memverifikasi nilai tersalin benar sebelum menghapus entri lama, lalu menghapusnya — tidak ada duplikat yang tertinggal. Aman dijalankan berkali-kali; kalau tidak ada tag skema lama, langsung bilang tidak ada yang perlu dipindah.
 
 ## Integrasi agent
 

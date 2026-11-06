@@ -23,9 +23,64 @@ import Foundation
 
 // MARK: - Entry point
 
+func printTopLevelHelp() {
+    print("""
+    cli-approval-gateway — daemon lokal yang menjalankan command di server
+    lewat SSH setelah disetujui operator via Touch ID/Face ID.
+
+    PEMAKAIAN UNTUK AGENT (Claude Code atau agent lain) MEMBUAT REQUEST:
+      1. Operator harus sudah menjalankan watcher (`cli-approval-gateway`
+         tanpa argumen) di satu terminal dan membiarkannya berjalan.
+      2. Tulis script command ke file SEMENTARA di folder `requests/`
+         (nama bebas), lalu RENAME ke `<id>.sh` dengan ID unik — JANGAN
+         langsung menulis nama `.sh` final, supaya watcher tidak membaca
+         file yang belum selesai ditulis. Baris pertama file boleh berupa
+         `#GATEWAY-HOST: <host>` untuk override host SSH default.
+      3. Tunggu lalu baca `responses/<id>.json`. Field: id, timestamp,
+         host, approved, exitCode, stdout, stderr, dan kadang `status`
+         tambahan (lihat di bawah). `approved: true` BUKAN berarti
+         command berhasil — selalu cek juga `exitCode`.
+      4. Untuk password di command, pakai placeholder `{{pw:tag}}` —
+         JANGAN PERNAH menaruh password asli di command.
+
+      Default folder data: `~/.cli-approval-gateway/` (override lewat
+      env `GATEWAY_BASE_DIR_NAME`). Subfolder: `requests/`, `processing/`
+      (internal, jangan disentuh manual), `responses/`, `processed/`.
+
+      Nilai `status` tambahan pada response (selain sukses biasa):
+      `duplicate-id-rejected`, `recovery-interrupted`, `execution-unknown`,
+      `aborted-before-execution` — semuanya berarti command TIDAK
+      dijalankan ulang otomatis; kirim request baru dengan ID BARU kalau
+      masih perlu, jangan pakai ID yang sama.
+
+    SUBCOMMAND:
+      cli-approval-gateway                 Jalankan watcher (loop utama, perlu operator jaga terminal)
+      cli-approval-gateway pw <aksi> ...    Kelola password Keychain (jalankan 'pw' tanpa argumen untuk detail)
+      cli-approval-gateway selftest <nama>  Self-test ('ssh-drain' atau 'lifecycle'), tidak perlu Touch ID/SSH asli
+      cli-approval-gateway --help | -h      Tampilkan bantuan ini
+
+    ENV VAR (opsional, untuk override saat start watcher):
+      GATEWAY_SSH_HOST                Host SSH default (fallback: pe-server)
+      GATEWAY_BASE_DIR_NAME           Nama folder data di bawah home (fallback: .cli-approval-gateway)
+      GATEWAY_POLL_INTERVAL_SECONDS   Interval polling requests/ dalam detik (fallback: 1.0)
+      GATEWAY_KEYCHAIN_SERVICE_NAME   Nama service Keychain untuk 'pw' (fallback: com.cli-approval-gateway.secrets)
+
+    PERINGATAN KEAMANAN UNTUK AGENT: JANGAN PERNAH menjalankan
+    `cli-approval-gateway pw reveal <tag>` atau `pw list`/`pw show` secara
+    otomatis — output-nya bisa memuat atau mengindikasikan data sensitif.
+    Perintah 'pw' (selain untuk membuat tag lewat 'add') hanya untuk
+    dijalankan langsung oleh operator manusia di terminalnya sendiri.
+    """)
+}
+
 let secretStore = SecretStore(service: GatewayConfig.configuredKeychainServiceName)
 let gate = ApprovalGate()
 let arguments = CommandLine.arguments
+
+if arguments.count > 1, ["--help", "-h", "help"].contains(arguments[1]) {
+    printTopLevelHelp()
+    exit(0)
+}
 
 if arguments.count > 1, arguments[1] == "pw" {
     runPasswordSubcommand(Array(arguments.dropFirst(2)), store: secretStore, gate: gate)

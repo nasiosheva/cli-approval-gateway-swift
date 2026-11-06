@@ -62,6 +62,9 @@ func printTopLevelHelp() {
       cli-approval-gateway selftest <nama>  Self-test ('ssh-drain' atau 'lifecycle'), tidak perlu Touch ID/SSH asli
       cli-approval-gateway --help | -h      Tampilkan bantuan ini
 
+      Argumen pertama selain di atas (termasuk typo) ditolak dengan error
+      ke stderr dan exit code 2 — TIDAK akan diam-diam menjalankan watcher.
+
     ENV VAR (opsional, untuk override saat start watcher):
       GATEWAY_SSH_HOST                Host SSH default (fallback: pe-server)
       GATEWAY_BASE_DIR_NAME           Nama folder data di bawah home (fallback: .cli-approval-gateway)

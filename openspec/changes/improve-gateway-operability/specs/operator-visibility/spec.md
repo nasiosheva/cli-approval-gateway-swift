@@ -7,7 +7,7 @@ Memberi operator sinyal yang jelas bahwa watcher masih hidup saat idle, dan bahw
 ## ADDED Requirements
 
 ### Requirement: Watcher melaporkan tanda hidup saat idle
-Gateway SHALL mencetak baris heartbeat singkat secara periodik ketika tidak ada request yang diproses melewati ambang waktu idle yang dapat dikonfigurasi, dan SHALL NOT mencetak heartbeat pada setiap iterasi polling.
+Gateway SHALL mencetak baris heartbeat singkat setiap `GATEWAY_IDLE_HEARTBEAT_SECONDS` (default 300 detik) ketika tidak ada request baru di `requests/`, SHALL NOT mencetak heartbeat pada setiap iterasi polling, dan SHALL menonaktifkannya jika nilainya `0`.
 
 #### Scenario: Watcher idle melewati ambang waktu
 - **WHEN** tidak ada request baru di `requests/` selama lebih dari ambang waktu idle

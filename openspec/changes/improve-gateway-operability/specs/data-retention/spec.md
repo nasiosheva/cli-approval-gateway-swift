@@ -7,7 +7,7 @@ Mencegah `audit.log`, `responses/`, dan `processed/` tumbuh tanpa batas selama g
 ## ADDED Requirements
 
 ### Requirement: Audit log dirotasi berdasarkan ukuran
-Gateway SHALL merotasi `audit.log` ke file cadangan ketika ukurannya melewati ambang yang dapat dikonfigurasi, dan SHALL melanjutkan penulisan entri baru tanpa kehilangan entri yang sudah tercatat sebelum rotasi.
+Gateway SHALL merotasi `audit.log` ke `audit.log.1` ketika entri baru akan melewati ambang `GATEWAY_AUDIT_LOG_MAX_BYTES` (default 10 MiB), dan SHALL melanjutkan penulisan entri baru tanpa kehilangan entri yang sudah tercatat sebelum rotasi.
 
 #### Scenario: Audit log melewati ambang ukuran
 - **WHEN** `audit.log` mencapai ukuran ambang saat entri baru akan ditulis

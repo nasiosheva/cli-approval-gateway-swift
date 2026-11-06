@@ -27,7 +27,7 @@ Lihat proposal untuk alasan dan spec `execution-safety`, `data-retention`, `oper
 
 ### Validasi host sebelum approval
 
-Sebelum memanggil `gate.approve(...)`, gateway menjalankan `ssh -G <host>` (menampilkan konfigurasi resolved tanpa connect) untuk memastikan host dikenal di `~/.ssh/config` atau merupakan hostname/IP yang valid secara sintaksis. Kalau tidak dikenal, request ditolak dengan status `host-unknown` tanpa pernah memicu dialog Touch ID.
+Sebelum memanggil `gate.approve(...)`, gateway menjalankan `ssh -G -vv <host>` (menampilkan konfigurasi resolved tanpa connect) untuk memastikan host adalah alias yang cocok dengan stanza SSH tertentu, memakai proxy yang dikonfigurasi, diarahkan ke hostname berbeda oleh konfigurasi, atau dapat di-resolve sebagai hostname/IP. `ssh -G` sendiri dapat sukses untuk alias yang tidak dikenal, jadi keberhasilan exit code saja tidak cukup untuk validasi. Kalau host tidak cocok dengan alias dan hostname-nya tidak dapat di-resolve, request ditolak dengan status `host-unknown` tanpa pernah memicu dialog Touch ID. Validasi tidak membuka koneksi SSH.
 
 **Alternatif:** validasi dengan benar-benar mencoba `ssh` connect dulu. Ditolak karena connect sungguhan bisa lambat/menggantung juga (perlu timeout sendiri) dan mengubah command yang dikirim; `ssh -G` cukup untuk mendeteksi typo tanpa side effect jaringan.
 

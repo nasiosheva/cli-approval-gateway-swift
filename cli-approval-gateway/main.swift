@@ -20,6 +20,42 @@
 //  pernah tersimpan/tercetak dalam bentuk plaintext di luar Keychain.
 
 import Foundation
+import Darwin
+
+var savedTerminalSettings = termios()
+var terminalSettingsActive = false
+
+func restoreTerminal() {
+    if terminalSettingsActive {
+        tcsetattr(STDIN_FILENO, TCSANOW, &savedTerminalSettings)
+        terminalSettingsActive = false
+    }
+}
+
+func waitForStopKey(seconds: TimeInterval) -> Bool {
+    guard isatty(STDIN_FILENO) == 1, tcgetattr(STDIN_FILENO, &savedTerminalSettings) == 0 else {
+        Thread.sleep(forTimeInterval: seconds)
+        return false
+    }
+    var settings = savedTerminalSettings
+    settings.c_lflag &= ~tcflag_t(ICANON | ECHO)
+    guard tcsetattr(STDIN_FILENO, TCSANOW, &settings) == 0 else {
+        Thread.sleep(forTimeInterval: seconds)
+        return false
+    }
+    terminalSettingsActive = true
+    defer { restoreTerminal() }
+    let deadline = Date().addingTimeInterval(seconds)
+    while deadline.timeIntervalSinceNow > 0 {
+        let remaining = deadline.timeIntervalSinceNow
+        var descriptor = pollfd(fd: STDIN_FILENO, events: Int16(POLLIN), revents: 0)
+        let ready = poll(&descriptor, 1, Int32(min(remaining * 1000, Double(Int32.max))))
+        if ready <= 0 { break }
+        var character: UInt8 = 0
+        if read(STDIN_FILENO, &character, 1) == 1 && character == 115 { return true }
+    }
+    return false
+}
 
 // MARK: - Entry point
 
@@ -52,15 +88,20 @@ func printTopLevelHelp() {
 
       Nilai `status` tambahan pada response (selain sukses biasa):
       `duplicate-id-rejected`, `recovery-interrupted`, `execution-unknown`,
-      `aborted-before-execution` — semuanya berarti command TIDAK
+      `aborted-before-execution`, `timed-out`, `host-unknown` — semuanya berarti command TIDAK
       dijalankan ulang otomatis; kirim request baru dengan ID BARU kalau
       masih perlu, jangan pakai ID yang sama.
 
     SUBCOMMAND:
       cli-approval-gateway                 Jalankan watcher (loop utama, perlu operator jaga terminal)
       cli-approval-gateway pw <aksi> ...    Kelola password Keychain (jalankan 'pw' tanpa argumen untuk detail)
-      cli-approval-gateway selftest <nama>  Self-test ('ssh-drain' atau 'lifecycle'), tidak perlu Touch ID/SSH asli
+      cli-approval-gateway selftest <nama>  Self-test ('ssh-drain', 'ssh-timeout', 'lifecycle', 'operability') tanpa SSH/Touch ID asli
+      cli-approval-gateway cleanup --older-than <hari> [--dry-run]  Hapus pasangan response/request lama
+      cli-approval-gateway clear-responses  Hapus semua file response JSON
+      cli-approval-gateway clear-audit      Kosongkan audit log
       cli-approval-gateway --help | -h      Tampilkan bantuan ini
+
+      Saat watcher berjalan, tekan s atau Ctrl-C untuk berhenti.
 
       Argumen pertama selain di atas (termasuk typo) ditolak dengan error
       ke stderr dan exit code 2 — TIDAK akan diam-diam menjalankan watcher.
@@ -69,6 +110,9 @@ func printTopLevelHelp() {
       GATEWAY_SSH_HOST                Host SSH default (fallback: pe-server)
       GATEWAY_BASE_DIR_NAME           Nama folder data di bawah home (fallback: .cli-approval-gateway)
       GATEWAY_POLL_INTERVAL_SECONDS   Interval polling requests/ dalam detik (fallback: 1.0)
+      GATEWAY_SSH_TIMEOUT_SECONDS     Batas waktu SSH per request dalam detik (fallback: 120)
+      GATEWAY_AUDIT_LOG_MAX_BYTES     Ukuran maksimum audit.log dalam byte (fallback: 10485760)
+      GATEWAY_IDLE_HEARTBEAT_SECONDS  Interval heartbeat idle dalam detik (fallback: 300; 0 untuk mematikan)
       GATEWAY_KEYCHAIN_SERVICE_NAME   Nama service Keychain untuk 'pw' (fallback: com.cli-approval-gateway.secrets)
 
     PERINGATAN KEAMANAN UNTUK AGENT: JANGAN PERNAH menjalankan
@@ -101,7 +145,7 @@ if arguments.count > 1, arguments[1] == "selftest" {
     runSelfTestSubcommand(Array(arguments.dropFirst(2)))
 }
 
-let knownSubcommands = ["pw", "selftest", "--help", "-h", "help"]
+let knownSubcommands = ["pw", "selftest", "cleanup", "clear-responses", "clear-audit", "--help", "-h", "help"]
 if arguments.count > 1, !knownSubcommands.contains(arguments[1]) {
     FileHandle.standardError.write("Argumen tidak dikenal: '\(arguments[1])'\nJalankan 'cli-approval-gateway --help' untuk daftar subcommand yang valid, atau tanpa argumen untuk start watcher.\n".data(using: .utf8)!)
     exit(2)
@@ -121,8 +165,40 @@ do {
     exit(1)
 }
 
-let executor = SSHExecutor()
-let logger = AuditLogger(url: config.auditLogURL)
+if arguments.count > 1, ["clear-responses", "clear-audit"].contains(arguments[1]) {
+    guard arguments.count == 2 else {
+        FileHandle.standardError.write("Subcommand ini tidak menerima argumen tambahan.\n".data(using: .utf8)!)
+        exit(2)
+    }
+    do {
+        let fm = FileManager.default
+        if arguments[1] == "clear-responses" {
+            let files = try fm.contentsOfDirectory(at: config.responsesDir, includingPropertiesForKeys: nil)
+            for file in files where file.pathExtension == "json" {
+                try fm.removeItem(at: file)
+            }
+            print("Semua response JSON telah dihapus.")
+        } else {
+            if fm.fileExists(atPath: config.auditLogURL.path) {
+                let handle = try FileHandle(forWritingTo: config.auditLogURL)
+                defer { try? handle.close() }
+                try handle.truncate(atOffset: 0)
+            }
+            print("Audit log telah dikosongkan.")
+        }
+        exit(0)
+    } catch {
+        FileHandle.standardError.write("Gagal menghapus data: \(error)\n".data(using: .utf8)!)
+        exit(1)
+    }
+}
+
+if arguments.count > 1, arguments[1] == "cleanup" {
+    runCleanupSubcommand(Array(arguments.dropFirst(2)), config: config)
+}
+
+let executor = SSHExecutor(timeoutSeconds: config.sshTimeoutSeconds)
+let logger = AuditLogger(url: config.auditLogURL, maxBytes: config.auditLogMaxBytes)
 
 print("cli-approval-gateway berjalan.")
 print("Requests folder  : \(config.requestsDir.path)")
@@ -132,12 +208,22 @@ print("Audit log        : \(config.auditLogURL.path)")
 print("SSH host default : \(config.sshHost) (override per-request lewat baris pertama '#GATEWAY-HOST: <host>')")
 print("Kelola password  : cli-approval-gateway pw add|list|remove <tag> --host <host>  ('default' untuk bundle fallback)")
 print("Placeholder      : pakai {{pw:<tag>}} di dalam command untuk substitusi password")
-print("Tekan Ctrl-C untuk berhenti.\n")
+print("Tekan s atau Ctrl-C untuk berhenti.\n")
+
+signal(SIGINT) { _ in
+    restoreTerminal()
+    exit(130)
+}
+signal(SIGTERM) { _ in
+    restoreTerminal()
+    exit(143)
+}
 
 print("Memeriksa request yang tertinggal di processing/ dari sesi sebelumnya...")
 recoverInterruptedRequests(config: config, logger: logger)
 
 let fm = FileManager.default
+var lastHeartbeat = Date()
 while true {
     if let files = try? fm.contentsOfDirectory(at: config.requestsDir, includingPropertiesForKeys: nil) {
         let shFiles = files
@@ -145,8 +231,16 @@ while true {
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
 
         for fileURL in shFiles {
-            handleCandidateRequest(fileURL: fileURL, config: config, gate: gate, executor: executor, logger: logger, secrets: secretStore)
+            handleCandidateRequest(fileURL: fileURL, config: config, gate: gate, executor: executor, logger: logger, secrets: secretStore, hostValidator: SSHHostValidator(), notifier: { _ = sendApprovalNotification(id: $0, host: $1) })
         }
+        if !shFiles.isEmpty {
+            lastHeartbeat = Date()
+        }
+    } else if let heartbeat = idleHeartbeatIfDue(lastHeartbeat: &lastHeartbeat, interval: config.idleHeartbeatSeconds) {
+        print(heartbeat)
     }
-    Thread.sleep(forTimeInterval: config.pollIntervalSeconds)
+    if waitForStopKey(seconds: config.pollIntervalSeconds) {
+        print("Watcher dihentikan.")
+        break
+    }
 }

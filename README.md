@@ -46,13 +46,16 @@ Jalankan watcher di terminal operator:
 GATEWAY_SSH_HOST=nama-host-ssh cli-approval-gateway
 ```
 
-`GATEWAY_SSH_HOST` menentukan host default; jika tidak diisi, kode menggunakan `pe-server`. Watcher berjalan di foreground. Biarkan terminal terbuka selama digunakan, lalu tekan `Ctrl+C` untuk menghentikannya. Gateway tidak dikonfigurasi untuk berjalan otomatis saat login.
+`GATEWAY_SSH_HOST` menentukan host default; jika tidak diisi, kode menggunakan `pe-server`. Watcher berjalan di foreground. Biarkan terminal terbuka selama digunakan, lalu tekan `s` atau `Ctrl+C` untuk menghentikannya. Tombol `s` diproses setelah request yang sedang berjalan selesai; tanpa terminal interaktif, gunakan `Ctrl+C` atau sinyal penghentian. Gateway tidak dikonfigurasi untuk berjalan otomatis saat login.
 
 | Environment variable | Default | Fungsi |
 | --- | --- | --- |
 | `GATEWAY_SSH_HOST` | `pe-server` | Host SSH default. |
 | `GATEWAY_BASE_DIR_NAME` | `.cli-approval-gateway` | Nama direktori data di bawah home. |
 | `GATEWAY_POLL_INTERVAL_SECONDS` | `1.0` | Interval polling positif dalam detik; nilai tidak valid memakai default. |
+| `GATEWAY_SSH_TIMEOUT_SECONDS` | `120` | Batas waktu positif untuk satu eksekusi SSH; proses dihentikan saat terlewati. |
+| `GATEWAY_AUDIT_LOG_MAX_BYTES` | `10485760` | Ambang rotasi `audit.log` dalam byte; file lama disimpan sebagai `audit.log.1`. |
+| `GATEWAY_IDLE_HEARTBEAT_SECONDS` | `300` | Interval heartbeat saat idle; set `0` untuk mematikan. |
 | `GATEWAY_KEYCHAIN_SERVICE_NAME` | `com.cli-approval-gateway.secrets` | Nama service Keychain. Mengubahnya membuat tag pada service lama tidak terlihat sampai nama semula digunakan kembali. |
 
 Saat dimulai, gateway membuat direktori berikut di `~/.cli-approval-gateway/`:
@@ -64,6 +67,32 @@ Saat dimulai, gateway membuat direktori berikut di `~/.cli-approval-gateway/`:
 | `responses/` | Hasil `<id>.json` untuk setiap request. |
 | `processed/` | File request yang sudah mencapai status terminal (response tersimpan). |
 | `audit.log` | Catatan transaksi dalam format JSON Lines. |
+
+Untuk menghapus semua file response JSON atau mengosongkan audit log, hentikan
+watcher terlebih dahulu, lalu jalankan perintah yang diperlukan:
+
+```sh
+cli-approval-gateway clear-responses
+cli-approval-gateway clear-audit
+```
+
+Penghapusan response tidak menghapus request di `processed/`, sehingga ID
+yang sudah diproses tetap tidak dapat digunakan ulang. Penghapusan audit dan
+response dilakukan terpisah dan tidak dapat dibatalkan melalui gateway.
+
+Untuk membersihkan pasangan response dan request yang sudah lama selesai,
+gunakan jumlah hari sebagai ambang. Kedua file harus lebih tua dari ambang;
+file tanpa pasangan tidak dihapus. Periksa daftar dengan `--dry-run` terlebih
+dahulu:
+
+```sh
+cli-approval-gateway cleanup --older-than 30 --dry-run
+cli-approval-gateway cleanup --older-than 30
+```
+
+Cleanup hanya berjalan saat dipanggil secara eksplisit. Karena response dan
+request arsip menyimpan bukti bahwa suatu ID pernah dipakai, menghapus
+pasangannya berarti ID itu tidak lagi terlindungi dari penggunaan ulang.
 
 Gateway mengambil lock eksklusif (`watcher.lock` di base dir) begitu start. Instance kedua yang dijalankan terhadap base dir yang sama (sengaja atau tidak sengaja, misalnya dari sesi terminal/agent lain) langsung keluar dengan exit code 1 dan pesan error, bukan berjalan diam-diam sebagai watcher kedua. Lock otomatis terlepas saat proses berhenti dengan cara apa pun (termasuk crash atau `kill -9`) — tidak ada lock basi yang perlu dibersihkan manual.
 
@@ -90,7 +119,22 @@ Untuk memilih host berbeda pada satu request, tempatkan directive berikut **pada
 hostname
 ```
 
-Host dapat berupa alias yang dikenal konfigurasi SSH. Tanpa directive, gateway menggunakan host default. Directive tetap menjadi komentar dalam script yang dikirim ke server.
+Host dapat berupa alias yang cocok dengan konfigurasi SSH, atau hostname/IP
+yang dapat di-resolve. Validasi memakai `ssh -G` dan pemeriksaan resolusi
+tanpa membuka koneksi SSH. Host yang tidak dikenal ditolak dengan status
+`host-unknown` sebelum dialog approval. Tanpa directive, gateway menggunakan
+host default. Directive tetap menjadi komentar dalam script yang dikirim ke
+server.
+
+Jika eksekusi melewati `GATEWAY_SSH_TIMEOUT_SECONDS`, gateway menghentikan
+proses SSH dan menyimpan response `status: "timed-out"` bersama output parsial.
+Watcher kemudian melanjutkan antrean. Karena hasil remote bisa tidak lengkap,
+periksa server sebelum mengirim ulang dengan ID baru.
+
+Saat idle, watcher mencetak heartbeat setiap `GATEWAY_IDLE_HEARTBEAT_SECONDS`
+detik (default 300). Set nilainya ke `0` untuk mematikan heartbeat. Ketika
+request valid akan meminta approval, macOS menampilkan notifikasi best-effort;
+kegagalan notifikasi tidak menghentikan pemrosesan.
 
 ## Verifikasi drain SSH
 

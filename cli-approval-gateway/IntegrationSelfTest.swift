@@ -46,7 +46,10 @@ private struct LifecycleTestContext {
             responsesDir: responses, processedDir: processed,
             auditLogURL: base.appendingPathComponent("audit.log"),
             lockFileURL: base.appendingPathComponent("watcher.lock"),
-            sshHost: "selftest-host", pollIntervalSeconds: 1.0
+            sshHost: "selftest-host", pollIntervalSeconds: 1.0,
+            sshTimeoutSeconds: GatewayConfig.defaultSSHTimeoutSeconds,
+            auditLogMaxBytes: GatewayConfig.defaultAuditLogMaxBytes,
+            idleHeartbeatSeconds: GatewayConfig.defaultIdleHeartbeatSeconds
         )
         return LifecycleTestContext(
             config: config,

@@ -9,6 +9,27 @@ struct GatewayConfig {
     static let baseDirName = ".cli-approval-gateway"
     static let keychainServiceName = "com.cli-approval-gateway.secrets"
     static let defaultPollIntervalSeconds: TimeInterval = 1.0
+    static let defaultSSHTimeoutSeconds: TimeInterval = 120
+    static let defaultAuditLogMaxBytes: UInt64 = 10 * 1024 * 1024
+    static let defaultIdleHeartbeatSeconds: TimeInterval = 5 * 60
+
+    private static func positiveEnvironmentInterval(_ key: String, fallback: TimeInterval) -> TimeInterval {
+        ProcessInfo.processInfo.environment[key]
+            .flatMap(TimeInterval.init)
+            .flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? fallback
+    }
+
+    private static func positiveEnvironmentBytes(_ key: String, fallback: UInt64) -> UInt64 {
+        ProcessInfo.processInfo.environment[key]
+            .flatMap(UInt64.init)
+            .flatMap { $0 > 0 ? $0 : nil } ?? fallback
+    }
+
+    private static func nonnegativeEnvironmentInterval(_ key: String, fallback: TimeInterval) -> TimeInterval {
+        ProcessInfo.processInfo.environment[key]
+            .flatMap(TimeInterval.init)
+            .flatMap { $0.isFinite && $0 >= 0 ? $0 : nil } ?? fallback
+    }
 
     static var configuredKeychainServiceName: String {
         ProcessInfo.processInfo.environment["GATEWAY_KEYCHAIN_SERVICE_NAME"] ?? keychainServiceName
@@ -32,6 +53,9 @@ struct GatewayConfig {
     let lockFileURL: URL
     let sshHost: String
     let pollIntervalSeconds: TimeInterval
+    let sshTimeoutSeconds: TimeInterval
+    let auditLogMaxBytes: UInt64
+    let idleHeartbeatSeconds: TimeInterval
 
     static func load() -> GatewayConfig {
         let fm = FileManager.default
@@ -57,7 +81,10 @@ struct GatewayConfig {
             auditLogURL: audit,
             lockFileURL: lock,
             sshHost: host,
-            pollIntervalSeconds: ProcessInfo.processInfo.environment["GATEWAY_POLL_INTERVAL_SECONDS"].flatMap(TimeInterval.init).flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? defaultPollIntervalSeconds
+            pollIntervalSeconds: positiveEnvironmentInterval("GATEWAY_POLL_INTERVAL_SECONDS", fallback: defaultPollIntervalSeconds),
+            sshTimeoutSeconds: positiveEnvironmentInterval("GATEWAY_SSH_TIMEOUT_SECONDS", fallback: defaultSSHTimeoutSeconds),
+            auditLogMaxBytes: positiveEnvironmentBytes("GATEWAY_AUDIT_LOG_MAX_BYTES", fallback: defaultAuditLogMaxBytes),
+            idleHeartbeatSeconds: nonnegativeEnvironmentInterval("GATEWAY_IDLE_HEARTBEAT_SECONDS", fallback: defaultIdleHeartbeatSeconds)
         )
     }
 }

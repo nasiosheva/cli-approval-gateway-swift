@@ -67,17 +67,40 @@ func runSSHDrainSelfTest() -> Bool {
     return ok
 }
 
+func runSSHTimeoutSelfTest() -> Bool {
+    print("[selftest] Memastikan subprocess dihentikan saat melewati timeout dan output parsial dipertahankan...")
+    let startedAt = Date()
+    let result = runProcessCapturingOutput(
+        executableURL: URL(fileURLWithPath: "/bin/sh"),
+        arguments: ["-c", "printf parsial; exec sleep 10"],
+        stdinData: nil,
+        timeoutSeconds: 0.25
+    )
+    let elapsed = Date().timeIntervalSince(startedAt)
+    let ok = result.timedOut && result.stdout == "parsial" && elapsed < 3
+    if ok {
+        print("[selftest] BERHASIL: timeout menghentikan subprocess dalam \(String(format: "%.2f", elapsed))s dan mempertahankan stdout parsial.")
+    } else {
+        print("[selftest] GAGAL: timedOut=\(result.timedOut), stdout=\(result.stdout), elapsed=\(String(format: "%.2f", elapsed))s.")
+    }
+    return ok
+}
+
 func runSelfTestSubcommand(_ args: [String]) -> Never {
     guard let name = args.first else {
-        FileHandle.standardError.write("Penggunaan: cli-approval-gateway selftest ssh-drain|lifecycle\n".data(using: .utf8)!)
+        FileHandle.standardError.write("Penggunaan: cli-approval-gateway selftest ssh-drain|ssh-timeout|lifecycle|operability\n".data(using: .utf8)!)
         exit(2)
     }
 
     switch name {
     case "ssh-drain":
         exit(runSSHDrainSelfTest() ? 0 : 1)
+    case "ssh-timeout":
+        exit(runSSHTimeoutSelfTest() ? 0 : 1)
     case "lifecycle":
         exit(runLifecycleSelfTest() ? 0 : 1)
+    case "operability":
+        exit(runOperabilitySelfTest() ? 0 : 1)
     default:
         FileHandle.standardError.write("Self-test tidak dikenal: \(name)\n".data(using: .utf8)!)
         exit(2)

@@ -9,6 +9,28 @@ func reportRequestError(id: String, stage: String, _ message: String) {
     FileHandle.standardError.write(line.data(using: .utf8)!)
 }
 
+private func terminalPreview(_ value: String, limit: Int = 240) -> String {
+    let wasTruncated = value.count > limit
+    let preview = String(value.prefix(limit)) + (wasTruncated ? "…" : "")
+    guard let data = try? JSONEncoder().encode(preview),
+          let encoded = String(data: data, encoding: .utf8) else {
+        return "\"\""
+    }
+    return encoded
+}
+
+func printResponseSummary(id: String, payload: [String: Any]) {
+    let approved = payload["approved"] as? Bool
+    let hasExitCode = payload["exitCode"].map { !($0 is NSNull) } ?? false
+    let status = payload["status"] as? String
+        ?? (approved == true ? (hasExitCode ? "completed" : "failed") : "rejected")
+    let exitCode = payload["exitCode"].flatMap { $0 is NSNull ? nil : "\($0)" } ?? "null"
+    let stdout = payload["stdout"] as? String ?? ""
+    let stderr = payload["stderr"] as? String ?? ""
+    let approvedText = approved.map { $0 ? "true" : "false" } ?? "unknown"
+    print("RESPONSE id=\(id) status=\(status) approved=\(approvedText) exitCode=\(exitCode) stdout=\(terminalPreview(stdout)) stderr=\(terminalPreview(stderr))")
+}
+
 // MARK: - Response persistence
 
 enum ResponseWriteError: Error, CustomStringConvertible {
@@ -79,6 +101,7 @@ func rejectDuplicateRequest(fileURL: URL, id: String, config: GatewayConfig) {
         ]
         do {
             try writeResponseAtomic(id: id, payload: payload, to: config.responsesDir)
+            printResponseSummary(id: id, payload: payload)
         } catch {
             reportRequestError(id: id, stage: "duplicate-response-write", "\(error)")
         }
@@ -116,7 +139,7 @@ func claimRequest(fileURL: URL, config: GatewayConfig) -> URL? {
 
 /// Pindahkan satu file request kandidat dari `requests/` ke pemrosesan penuh.
 /// Menangani deteksi ID duplikat lalu klaim atomik sebelum approval.
-func handleCandidateRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGating, executor: CommandExecuting, logger: AuditLogger, secrets: SecretStore) {
+func handleCandidateRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGating, executor: CommandExecuting, logger: AuditLogger, secrets: SecretStore, hostValidator: SSHHostValidating? = nil, notifier: (String, String) -> Void = { _, _ in }) {
     let id = fileURL.deletingPathExtension().lastPathComponent
 
     if requestIDHasExistingState(id, config: config) {
@@ -128,7 +151,7 @@ func handleCandidateRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalG
         return
     }
 
-    processClaimedRequest(fileURL: claimedURL, config: config, gate: gate, executor: executor, logger: logger, secrets: secrets)
+    processClaimedRequest(fileURL: claimedURL, config: config, gate: gate, executor: executor, logger: logger, secrets: secrets, hostValidator: hostValidator, notifier: notifier)
 }
 
 // MARK: - Finalize (move to processed/)
@@ -149,7 +172,7 @@ func finalizeProcessing(id: String, fileURL: URL, config: GatewayConfig) {
 
 // MARK: - Request processing (request sudah diklaim, berada di processing/)
 
-func processClaimedRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGating, executor: CommandExecuting, logger: AuditLogger, secrets: SecretStore) {
+func processClaimedRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGating, executor: CommandExecuting, logger: AuditLogger, secrets: SecretStore, hostValidator: SSHHostValidating?, notifier: (String, String) -> Void) {
     let id = fileURL.deletingPathExtension().lastPathComponent
 
     guard let rawCommand = try? String(contentsOf: fileURL, encoding: .utf8) else {
@@ -170,16 +193,28 @@ func processClaimedRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGa
 
     // Selalu tampilkan/log versi MENTAH (placeholder {{pw:tag}} belum
     // diresolve) — supaya password tidak pernah muncul di terminal/log.
-    print("========================================")
-    print("Request baru: \(id)")
-    print("Host target : \(host)")
-    print("Isi command (placeholder password belum diresolve):")
-    print(rawCommand)
-    print("========================================")
+    print("REQUEST id=\(id) host=\(terminalPreview(host)) command=\(terminalPreview(rawCommand))")
 
+    let timestamp = ISO8601DateFormatter().string(from: Date())
+    if let hostValidator, !hostValidator.isValid(host) {
+        reportRequestError(id: id, stage: "host-validation", "Host SSH '\(host)' tidak dikenal atau tidak dapat di-resolve; approval tidak diminta.")
+        let payload: [String: Any] = [
+            "id": id,
+            "timestamp": timestamp,
+            "host": host,
+            "approved": false,
+            "exitCode": NSNull(),
+            "stdout": "",
+            "stderr": "Host SSH tidak dikenal atau tidak dapat di-resolve.",
+            "status": "host-unknown"
+        ]
+        finishProcessing(id: id, fileURL: fileURL, payload: payload, config: config)
+        return
+    }
+
+    notifier(id, host)
     let reason = "Setujui eksekusi command \"\(id)\" di \(host)?"
     let approved = gate.approve(reason: reason)
-    let timestamp = ISO8601DateFormatter().string(from: Date())
 
     var payload: [String: Any] = [
         "id": id,
@@ -189,8 +224,6 @@ func processClaimedRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGa
     ]
 
     if approved {
-        print("[\(id)] Disetujui. Menyiapkan command (resolve password tag bila ada)...")
-
         do {
             try writeRequestStatus(RequestStatus(id: id, stage: .sshStarted, host: host, timestamp: timestamp), to: config.processingDir)
         } catch {
@@ -205,13 +238,14 @@ func processClaimedRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGa
 
         do {
             let resolvedCommand = try resolvePlaceholders(in: rawCommand, host: host, using: secrets, gate: gate)
-            print("[\(id)] Menjalankan di \(host)...")
             let result = executor.run(host: host, script: resolvedCommand)
             payload["exitCode"] = result.exitCode
             payload["stdout"] = result.stdout
             payload["stderr"] = result.stderr
-            print("[\(id)] Selesai. exit_code=\(result.exitCode)")
-
+            if result.timedOut {
+                payload["status"] = "timed-out"
+                payload["stderr"] = [result.stderr, "Waktu eksekusi SSH melewati batas dan proses dihentikan."].filter { !$0.isEmpty }.joined(separator: "\n")
+            }
             do {
                 try logger.append(AuditEntry(
                     id: id, timestamp: timestamp, host: host,
@@ -221,7 +255,6 @@ func processClaimedRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGa
                 reportRequestError(id: id, stage: "audit", "Gagal menulis audit log: \(error). Response tetap disimpan.")
             }
         } catch {
-            print("[\(id)] Gagal resolve password tag: \(error)")
             payload["exitCode"] = NSNull()
             payload["stdout"] = ""
             payload["stderr"] = "Gagal resolve password tag: \(error)"
@@ -236,7 +269,6 @@ func processClaimedRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGa
             }
         }
     } else {
-        print("[\(id)] Ditolak atau approval gagal. Command tidak dijalankan.")
         payload["exitCode"] = NSNull()
         payload["stdout"] = ""
         payload["stderr"] = "Request ditolak atau Touch ID/Face ID gagal."
@@ -260,6 +292,7 @@ func processClaimedRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGa
 private func finishProcessing(id: String, fileURL: URL, payload: [String: Any], config: GatewayConfig) {
     do {
         try writeResponseAtomic(id: id, payload: payload, to: config.responsesDir)
+        printResponseSummary(id: id, payload: payload)
         finalizeProcessing(id: id, fileURL: fileURL, config: config)
     } catch {
         reportRequestError(id: id, stage: "response-write", "\(error). Request tetap di processing/ untuk pemeriksaan manual; TIDAK akan dijalankan ulang otomatis.")
@@ -287,6 +320,10 @@ func recoverInterruptedRequests(config: GatewayConfig, logger: AuditLogger) {
         // Response terminal sudah ada: gateway lama sempat menyimpan response
         // tapi crash sebelum memindahkan file ke processed/. Selesaikan saja.
         if fm.fileExists(atPath: responseURL.path) {
+            if let data = try? Data(contentsOf: responseURL),
+               let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                printResponseSummary(id: id, payload: payload)
+            }
             finalizeProcessing(id: id, fileURL: fileURL, config: config)
             continue
         }
@@ -318,6 +355,7 @@ func recoverInterruptedRequests(config: GatewayConfig, logger: AuditLogger) {
 
         do {
             try writeResponseAtomic(id: id, payload: payload, to: config.responsesDir)
+            printResponseSummary(id: id, payload: payload)
             finalizeProcessing(id: id, fileURL: fileURL, config: config)
         } catch {
             reportRequestError(id: id, stage: "recovery-response-write", "\(error). Request tetap di processing/ (\(fileURL.path)) untuk pemeriksaan manual.")

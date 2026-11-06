@@ -88,6 +88,16 @@ hostname
 
 Host dapat berupa alias yang dikenal konfigurasi SSH. Tanpa directive, gateway menggunakan host default. Directive tetap menjadi komentar dalam script yang dikirim ke server.
 
+## Verifikasi drain SSH
+
+Gateway membaca stdout dan stderr SSH secara bersamaan agar output besar pada salah satu stream tidak memblokir pembacaan stream lain. Jalankan stress test berikut untuk memverifikasi tidak ada deadlock di lingkungan yang menjalankan binary ini:
+
+```bash
+cli-approval-gateway selftest ssh-drain
+```
+
+Perintah ini menjalankan subprocess lokal yang menulis 4MB ke stdout dan 4MB ke stderr (jauh di atas kapasitas pipe tipikal 64KB), lalu memverifikasi exit code dan ukuran kedua stream diterima utuh dalam batas waktu 15 detik. Keluar dengan kode 0 bila berhasil, 1 bila gagal/timeout.
+
 ## Pemulihan setelah restart
 
 Saat startup, gateway memeriksa `processing/` sebelum memindai `requests/`, untuk menangani request yang tertinggal akibat crash atau restart sebelumnya. Gateway **tidak pernah** menjalankan ulang command secara otomatis pada tahap ini; ia hanya menulis response terminal yang menjelaskan apa yang diketahui, lalu memindahkan request ke `processed/`:

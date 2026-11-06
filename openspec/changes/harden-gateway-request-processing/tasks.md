@@ -10,8 +10,8 @@
 
 ## 2. Drain output SSH secara paralel
 
-- [ ] 2.1 Ubah SSH executor agar membaca stdout dan stderr bersamaan, menutup stdin setelah script terkirim, lalu menunggu proses serta kedua pembaca; verifikasi exit code dan kedua stream tetap terpisah.
-- [ ] 2.2 Tambahkan stress test subprocess yang menulis lebih dari kapasitas pipe ke stdout dan stderr; verifikasi test selesai tanpa timeout/deadlock dan seluruh output yang dihasilkan muncul pada response.
+- [x] 2.1 Ubah SSH executor agar membaca stdout dan stderr bersamaan, menutup stdin setelah script terkirim, lalu menunggu proses serta kedua pembaca; verifikasi exit code dan kedua stream tetap terpisah.
+- [x] 2.2 Tambahkan stress test subprocess yang menulis lebih dari kapasitas pipe ke stdout dan stderr; verifikasi test selesai tanpa timeout/deadlock dan seluruh output yang dihasilkan muncul pada response.
 
 ## 3. Integrasi dan kompatibilitas operasional
 

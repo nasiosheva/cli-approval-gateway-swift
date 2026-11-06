@@ -98,6 +98,12 @@ if arguments.count > 1, arguments[1] == "selftest" {
     runSelfTestSubcommand(Array(arguments.dropFirst(2)))
 }
 
+let knownSubcommands = ["pw", "selftest", "--help", "-h", "help"]
+if arguments.count > 1, !knownSubcommands.contains(arguments[1]) {
+    FileHandle.standardError.write("Argumen tidak dikenal: '\(arguments[1])'\nJalankan 'cli-approval-gateway --help' untuk daftar subcommand yang valid, atau tanpa argumen untuk start watcher.\n".data(using: .utf8)!)
+    exit(2)
+}
+
 let config = GatewayConfig.load()
 
 // Lock harus diambil sebelum apa pun lain (termasuk recovery) supaya dua

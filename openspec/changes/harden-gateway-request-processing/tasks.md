@@ -15,7 +15,7 @@
 
 ## 3. Integrasi dan kompatibilitas operasional
 
-- [ ] 3.1 Tambahkan uji integrasi lifecycle penuh: approval ditolak, SSH sukses/gagal, penulisan response gagal, dan restart pada setiap batas state; verifikasi setiap ID hanya dapat dieksekusi satu kali otomatis.
-- [ ] 3.2 Perbarui README dengan direktori `processing/`, perilaku ID duplikat, hasil `execution-unknown`, serta langkah upgrade dan rollback; verifikasi instruksi cocok dengan lifecycle yang diuji.
-- [ ] 3.3 Build target Debug dan Release dari project Xcode; verifikasi kedua build sukses dan semua file Swift baru ikut terkompilasi.
-- [ ] 3.4 Jalankan verifikasi manual di sesi Terminal interaktif dengan dua watcher dan output SSH besar; catat hasil approval, response, audit, dan state filesystem tanpa menyertakan secret.
+- [x] 3.1 Tambahkan uji integrasi lifecycle penuh: approval ditolak, SSH sukses/gagal, penulisan response gagal, dan restart pada setiap batas state; verifikasi setiap ID hanya dapat dieksekusi satu kali otomatis.
+- [x] 3.2 Perbarui README dengan direktori `processing/`, perilaku ID duplikat, hasil `execution-unknown`, serta langkah upgrade dan rollback; verifikasi instruksi cocok dengan lifecycle yang diuji.
+- [x] 3.3 Build target Debug dan Release dari project Xcode; verifikasi kedua build sukses dan semua file Swift baru ikut terkompilasi.
+- [x] 3.4 Jalankan verifikasi manual di sesi Terminal interaktif dengan dua watcher dan output SSH besar; catat hasil approval, response, audit, dan state filesystem tanpa menyertakan secret.

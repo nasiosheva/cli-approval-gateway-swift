@@ -98,6 +98,21 @@ cli-approval-gateway selftest ssh-drain
 
 Perintah ini menjalankan subprocess lokal yang menulis 4MB ke stdout dan 4MB ke stderr (jauh di atas kapasitas pipe tipikal 64KB), lalu memverifikasi exit code dan ukuran kedua stream diterima utuh dalam batas waktu 15 detik. Keluar dengan kode 0 bila berhasil, 1 bila gagal/timeout.
 
+Untuk memverifikasi lifecycle klaim/approval/eksekusi/response/recovery secara menyeluruh tanpa Touch ID/Face ID atau SSH asli (memakai test double, di direktori sementara terisolasi):
+
+```bash
+cli-approval-gateway selftest lifecycle
+```
+
+Mencakup skenario: approval ditolak, SSH sukses, SSH gagal (exit code bukan nol), penulisan response gagal, restart pada tiap batas state (`claimed`, `ssh-started`, response tersimpan tapi belum dipindah), dan penolakan ID yang dikirim ulang. Keluar dengan kode 0 bila semua skenario lulus.
+
+## Upgrade dan rollback
+
+1. Hentikan semua instance gateway yang berjalan (`Ctrl+C` di setiap terminal operator) sebelum mengganti binary. Instance lama dan baru berjalan bersamaan dapat saling mendahului mengklaim request yang sama dari `requests/`.
+2. Build/pasang binary baru lalu jalankan seperti biasa. Versi baru otomatis membuat direktori `processing/` di `~/.cli-approval-gateway/` bila belum ada, dan tetap memakai `requests/`, `responses/`, `processed/`, serta format field JSON lama — tidak perlu migrasi data manual.
+3. Request `.sh` yang masih ada di `requests/` saat upgrade akan diproses dengan lifecycle baru (klaim ke `processing/`) pada polling berikutnya.
+4. **Rollback:** hentikan dahulu instance versi baru sebelum menjalankan binary versi lama. Binary lama tidak mengenal direktori `processing/`, jadi **jangan** memindahkan isi `processing/` kembali ke `requests/` secara massal — periksa dulu status tiap request (lihat tabel status recovery di bawah) untuk memastikan tidak ada eksekusi ganda sebelum request yang masih relevan dibuat ulang dengan ID baru di `requests/`.
+
 ## Pemulihan setelah restart
 
 Saat startup, gateway memeriksa `processing/` sebelum memindai `requests/`, untuk menangani request yang tertinggal akibat crash atau restart sebelumnya. Gateway **tidak pernah** menjalankan ulang command secara otomatis pada tahap ini; ia hanya menulis response terminal yang menjelaskan apa yang diketahui, lalu memindahkan request ke `processed/`:

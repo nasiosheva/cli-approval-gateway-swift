@@ -57,10 +57,13 @@ Saat dimulai, gateway membuat direktori berikut di `~/.cli-approval-gateway/`:
 
 | Lokasi | Fungsi |
 | --- | --- |
-| `requests/` | File request `<id>.sh` yang menunggu diproses. |
+| `requests/` | File request `<id>.sh` yang menunggu diklaim. |
+| `processing/` | Request yang sudah diklaim oleh satu watcher: `<id>.sh` beserta sidecar `<id>.status.json` yang mencatat tahap terakhir (`claimed` atau `ssh-started`). |
 | `responses/` | Hasil `<id>.json` untuk setiap request. |
-| `processed/` | File request yang sudah diproses. |
+| `processed/` | File request yang sudah mencapai status terminal (response tersimpan). |
 | `audit.log` | Catatan transaksi dalam format JSON Lines. |
+
+Setiap ID request hanya boleh diklaim dan dieksekusi sekali. Gateway mengklaim request dengan rename atomik `requests/<id>.sh` → `processing/<id>.sh`; jika dua watcher melihat file yang sama, hanya satu yang berhasil memindahkannya sehingga paling banyak satu approval dan satu eksekusi SSH terjadi. Request dengan ID yang sudah ada di `processing/`, `processed/`, atau `responses/` ditolak otomatis dengan response `status: "duplicate-id-rejected"` tanpa approval atau eksekusi ulang — gunakan ID baru untuk percobaan ulang.
 
 ## Membuat request
 
@@ -84,6 +87,25 @@ hostname
 ```
 
 Host dapat berupa alias yang dikenal konfigurasi SSH. Tanpa directive, gateway menggunakan host default. Directive tetap menjadi komentar dalam script yang dikirim ke server.
+
+## Pemulihan setelah restart
+
+Saat startup, gateway memeriksa `processing/` sebelum memindai `requests/`, untuk menangani request yang tertinggal akibat crash atau restart sebelumnya. Gateway **tidak pernah** menjalankan ulang command secara otomatis pada tahap ini; ia hanya menulis response terminal yang menjelaskan apa yang diketahui, lalu memindahkan request ke `processed/`:
+
+| `status` pada response | Kondisi saat ditemukan | Arti |
+| --- | --- | --- |
+| `recovery-interrupted` | Request diklaim (`claimed`) tapi SSH belum pernah dimulai saat gateway berhenti. | Command dipastikan **tidak** dijalankan di server. Aman mengulang dengan ID baru bila masih diperlukan. |
+| `execution-unknown` | Status `ssh-started` tercatat tapi tidak ada response terminal sebelumnya. | Command **mungkin** sudah/sedang berjalan di server saat gateway berhenti. Hasilnya tidak diketahui secara lokal. |
+| `aborted-before-execution` | Approval berhasil tapi gateway gagal mencatat status `ssh-started` sebelum menjalankan SSH. | Command **tidak** dijalankan; ditolak demi keamanan karena jejak recovery tidak dapat dibuat. |
+| `duplicate-id-rejected` | Request baru dengan ID yang sudah punya state di `processing/`, `processed/`, atau `responses/`. | Command **tidak** dijalankan; ID sudah pernah dipakai. |
+
+Prosedur sebelum mengirim ulang request (dengan ID baru) setelah melihat `execution-unknown` di `responses/<id>.json`:
+
+1. Masuk ke server target (lihat field `host` pada response) dan periksa secara manual apakah command sudah berjalan, sedang berjalan, atau meninggalkan efek samping (proses, file, log aplikasi) yang relevan dengan isi command tersebut.
+2. Jangan memindahkan file dari `processing/` kembali ke `requests/` secara manual — gateway sudah menyelesaikan ID tersebut ke `processed/` dengan response `execution-unknown`, dan ID yang sama akan ditolak sebagai duplikat bila dicoba lagi.
+3. Setelah dampak di server dipastikan, kirim request baru dengan ID baru bila eksekusi ulang masih diperlukan.
+
+Pesan error terkait tahap klaim, status, response, audit, atau pemindahan file dicetak ke stderr terminal operator dengan format `[<id>] ERROR tahap=<tahap>: <pesan>`. Bila penulisan response gagal setelah SSH selesai, request **tetap** berada di `processing/` (tidak dipindahkan ke `processed/` dan tidak dikembalikan ke `requests/`) sampai diperiksa dan dibersihkan secara manual oleh operator — gateway tidak akan memungutnya lagi sebagai pending.
 
 ## Mengelola password
 

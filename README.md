@@ -140,6 +140,43 @@ Pesan error terkait tahap klaim, status, response, audit, atau pemindahan file d
 
 Password disimpan per **bundle** — satu bundle = satu host (misalnya `pe-server`, `server-2`), dipisah penuh di Keychain (bukan sekadar penamaan tag). Bundle khusus bernama `default` dipakai sebagai fallback lintas-host untuk password yang sama di semua server. `--host` wajib di setiap aksi (kecuali `list` tanpa argumen dan `migrate-bundles`). Input password untuk `add` dan `edit` tidak ditampilkan saat diketik.
 
+### Struktur bundle (multi-server)
+
+Satu gateway bisa melayani banyak server sekaligus karena setiap host punya bundle sendiri yang terpisah penuh di Keychain — menambah atau mengganti tag di bundle satu host tidak pernah menyentuh bundle host lain. Struktur fisiknya:
+
+```
+Keychain (service dasar: com.cli-approval-gateway.secrets)
+├── bundle "pe-server"   → service: com.cli-approval-gateway.secrets.bundle.pe-server
+│   ├── sudo              = <password sudo khusus pe-server>
+│   └── db_prod            = <password database khusus pe-server>
+├── bundle "server-2"    → service: com.cli-approval-gateway.secrets.bundle.server-2
+│   ├── sudo              = <password sudo khusus server-2, BEDA dari pe-server>
+│   └── api_key            = <token khusus server-2>
+└── bundle "default"     → service: com.cli-approval-gateway.secrets.bundle.default
+    └── github_token       = <token yang sama untuk SEMUA host>
+
+~/.cli-approval-gateway/secret-bundles.json
+└── ["default", "pe-server", "server-2"]   # hanya NAMA bundle, bukan secret — untuk enumerasi 'pw list'
+```
+
+Resolusi `{{pw:tag}}` per request mengikuti host tujuan request itu sendiri, bukan host lain yang mungkin lagi diproses di waktu berdekatan:
+
+```
+Request A  #GATEWAY-HOST: pe-server        Request B  #GATEWAY-HOST: server-2
+  {{pw:sudo}}                                 {{pw:sudo}}
+    → cek bundle "pe-server" → ADA              → cek bundle "server-2" → ADA
+    → pakai sudo milik pe-server                → pakai sudo milik server-2 (nilai beda)
+
+  {{pw:github_token}}                         {{pw:github_token}}
+    → cek bundle "pe-server" → tidak ada        → cek bundle "server-2" → tidak ada
+    → fallback bundle "default" → ADA           → fallback bundle "default" → ADA
+    → pakai github_token yang sama              → pakai github_token yang sama
+```
+
+Jadi tag dengan nama sama (`sudo`) boleh punya nilai berbeda di tiap host tanpa tabrakan, sementara tag yang memang dimaksud lintas-host (`github_token`) cukup disimpan sekali di bundle `default`. Menambah server baru hanya perlu `pw add <tag> --host <host-baru>` — tidak ada konfigurasi tambahan di luar Keychain untuk mendaftarkan host tersebut.
+
+Catatan: "multi-server" di sini berarti setiap request bisa menargetkan host berbeda secara independen lewat `#GATEWAY-HOST:` dan password-nya ter-resolve otomatis ke bundle yang benar — bukan berarti watcher mengeksekusi beberapa request secara **konkuren**. Satu instance gateway masih memproses antrean `requests/` satu per satu secara berurutan; request ke `server-2` dan `pe-server` yang masuk bersamaan akan tetap diproses bergantian, bukan paralel di thread terpisah.
+
 ```bash
 cli-approval-gateway pw add sudo --host pe-server      # tambah/ganti nilai di bundle 'pe-server'
 cli-approval-gateway pw add sudo --host default        # password sama untuk semua host tanpa bundle sendiri

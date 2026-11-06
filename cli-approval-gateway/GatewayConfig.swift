@@ -16,6 +16,7 @@ struct GatewayConfig {
 
     let baseDir: URL
     let requestsDir: URL
+    let processingDir: URL
     let responsesDir: URL
     let processedDir: URL
     let auditLogURL: URL
@@ -27,11 +28,12 @@ struct GatewayConfig {
         let home = fm.homeDirectoryForCurrentUser
         let base = home.appendingPathComponent(ProcessInfo.processInfo.environment["GATEWAY_BASE_DIR_NAME"] ?? baseDirName, isDirectory: true)
         let requests = base.appendingPathComponent("requests", isDirectory: true)
+        let processing = base.appendingPathComponent("processing", isDirectory: true)
         let responses = base.appendingPathComponent("responses", isDirectory: true)
         let processed = base.appendingPathComponent("processed", isDirectory: true)
         let audit = base.appendingPathComponent("audit.log")
 
-        for dir in [base, requests, responses, processed] {
+        for dir in [base, requests, processing, responses, processed] {
             try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         }
 
@@ -39,6 +41,7 @@ struct GatewayConfig {
         return GatewayConfig(
             baseDir: base,
             requestsDir: requests,
+            processingDir: processing,
             responsesDir: responses,
             processedDir: processed,
             auditLogURL: audit,

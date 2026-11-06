@@ -36,13 +36,17 @@ let executor = SSHExecutor()
 let logger = AuditLogger(url: config.auditLogURL)
 
 print("cli-approval-gateway berjalan.")
-print("Requests folder : \(config.requestsDir.path)")
-print("Responses folder: \(config.responsesDir.path)")
-print("Audit log       : \(config.auditLogURL.path)")
-print("SSH host default: \(config.sshHost) (override per-request lewat baris pertama '#GATEWAY-HOST: <host>')")
-print("Kelola password : cli-approval-gateway pw add|list|remove <tag>  (tag host-scoped: <tag>@<host>)")
-print("Placeholder     : pakai {{pw:<tag>}} di dalam command untuk substitusi password")
+print("Requests folder  : \(config.requestsDir.path)")
+print("Processing folder: \(config.processingDir.path)")
+print("Responses folder : \(config.responsesDir.path)")
+print("Audit log        : \(config.auditLogURL.path)")
+print("SSH host default : \(config.sshHost) (override per-request lewat baris pertama '#GATEWAY-HOST: <host>')")
+print("Kelola password  : cli-approval-gateway pw add|list|remove <tag>  (tag host-scoped: <tag>@<host>)")
+print("Placeholder      : pakai {{pw:<tag>}} di dalam command untuk substitusi password")
 print("Tekan Ctrl-C untuk berhenti.\n")
+
+print("Memeriksa request yang tertinggal di processing/ dari sesi sebelumnya...")
+recoverInterruptedRequests(config: config, logger: logger)
 
 let fm = FileManager.default
 while true {
@@ -52,7 +56,7 @@ while true {
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
 
         for fileURL in shFiles {
-            processRequest(fileURL: fileURL, config: config, gate: gate, executor: executor, logger: logger, secrets: secretStore)
+            handleCandidateRequest(fileURL: fileURL, config: config, gate: gate, executor: executor, logger: logger, secrets: secretStore)
         }
     }
     Thread.sleep(forTimeInterval: config.pollIntervalSeconds)

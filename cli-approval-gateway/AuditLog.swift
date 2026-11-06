@@ -28,9 +28,9 @@ final class AuditLogger {
         }
     }
 
-    func append(_ entry: AuditEntry) {
-        guard let data = try? encoder.encode(entry) else { return }
-        guard let handle = try? FileHandle(forWritingTo: url) else { return }
+    func append(_ entry: AuditEntry) throws {
+        let data = try encoder.encode(entry)
+        let handle = try FileHandle(forWritingTo: url)
         defer { try? handle.close() }
         handle.seekToEndOfFile()
         handle.write(data)

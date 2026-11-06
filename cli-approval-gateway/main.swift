@@ -31,6 +31,10 @@ if arguments.count > 1, arguments[1] == "pw" {
     runPasswordSubcommand(Array(arguments.dropFirst(2)), store: secretStore, gate: gate)
 }
 
+if arguments.count > 1, arguments[1] == "selftest" {
+    runSelfTestSubcommand(Array(arguments.dropFirst(2)))
+}
+
 let config = GatewayConfig.load()
 let executor = SSHExecutor()
 let logger = AuditLogger(url: config.auditLogURL)

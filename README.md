@@ -46,11 +46,11 @@ Jalankan watcher di terminal operator:
 GATEWAY_SSH_HOST=nama-host-ssh cli-approval-gateway
 ```
 
-`GATEWAY_SSH_HOST` menentukan host default; jika tidak diisi, kode menggunakan `pe-server`. Watcher berjalan di foreground. Biarkan terminal terbuka selama digunakan, lalu tekan `s` atau `Ctrl+C` untuk menghentikannya. Tombol `s` diproses setelah request yang sedang berjalan selesai; tanpa terminal interaktif, gunakan `Ctrl+C` atau sinyal penghentian. Gateway tidak dikonfigurasi untuk berjalan otomatis saat login.
+`GATEWAY_SSH_HOST` menentukan host default; jika tidak diisi, kode menggunakan `abcd-server`. Watcher berjalan di foreground. Biarkan terminal terbuka selama digunakan, lalu tekan `s` atau `Ctrl+C` untuk menghentikannya. Tombol `s` diproses setelah request yang sedang berjalan selesai; tanpa terminal interaktif, gunakan `Ctrl+C` atau sinyal penghentian. Gateway tidak dikonfigurasi untuk berjalan otomatis saat login.
 
 | Environment variable | Default | Fungsi |
 | --- | --- | --- |
-| `GATEWAY_SSH_HOST` | `pe-server` | Host SSH default. |
+| `GATEWAY_SSH_HOST` | `abcd-server` | Host SSH default. |
 | `GATEWAY_BASE_DIR_NAME` | `.cli-approval-gateway` | Nama direktori data di bawah home. |
 | `GATEWAY_POLL_INTERVAL_SECONDS` | `1.0` | Interval polling positif dalam detik; nilai tidak valid memakai default. |
 | `GATEWAY_SSH_TIMEOUT_SECONDS` | `120` | Batas waktu positif untuk satu eksekusi SSH; proses dihentikan saat terlewati. |
@@ -80,7 +80,7 @@ yang digabungkan dengan AND. Tanggal dihitung menurut UTC; output memuat command
 mentah dan dapat bersifat sensitif.
 
 ```sh
-cli-approval-gateway audit search --host pe-server --date 2026-01-01 --approved true
+cli-approval-gateway audit search --host abcd-server --date 2026-01-01 --approved true
 ```
 
 Periksa koneksi secara eksplisit dengan `cli-approval-gateway host check <host>`.
@@ -222,7 +222,7 @@ Pesan error terkait tahap klaim, status, response, audit, atau pemindahan file d
 
 ## Mengelola password (per bundle/host)
 
-Password disimpan per **bundle** — satu bundle = satu host (misalnya `pe-server`, `server-2`), dipisah penuh di Keychain (bukan sekadar penamaan tag). Bundle khusus bernama `default` dipakai sebagai fallback lintas-host untuk password yang sama di semua server. `--host` wajib di setiap aksi (kecuali `list` tanpa argumen dan `migrate-bundles`). Input password untuk `add` dan `edit` tidak ditampilkan saat diketik.
+Password disimpan per **bundle** — satu bundle = satu host (misalnya `abcd-server`, `efgh-server`), dipisah penuh di Keychain (bukan sekadar penamaan tag). Bundle khusus bernama `default` dipakai sebagai fallback lintas-host untuk password yang sama di semua server. `--host` wajib di setiap aksi (kecuali `list` tanpa argumen dan `migrate-bundles`). Input password untuk `add` dan `edit` tidak ditampilkan saat diketik.
 
 ### Struktur bundle (multi-server)
 
@@ -230,58 +230,58 @@ Satu gateway bisa melayani banyak server sekaligus karena setiap host punya bund
 
 ```
 Keychain (service dasar: com.cli-approval-gateway.secrets)
-├── bundle "pe-server"   → service: com.cli-approval-gateway.secrets.bundle.pe-server
-│   ├── sudo              = <password sudo khusus pe-server>
-│   └── db_prod            = <password database khusus pe-server>
-├── bundle "server-2"    → service: com.cli-approval-gateway.secrets.bundle.server-2
-│   ├── sudo              = <password sudo khusus server-2, BEDA dari pe-server>
-│   └── api_key            = <token khusus server-2>
+├── bundle "abcd-server"   → service: com.cli-approval-gateway.secrets.bundle.abcd-server
+│   ├── sudo              = <password sudo khusus abcd-server>
+│   └── db_prod            = <password database khusus abcd-server>
+├── bundle "efgh-server"    → service: com.cli-approval-gateway.secrets.bundle.efgh-server
+│   ├── sudo              = <password sudo khusus efgh-server, BEDA dari abcd-server>
+│   └── api_key            = <token khusus efgh-server>
 └── bundle "default"     → service: com.cli-approval-gateway.secrets.bundle.default
     └── github_token       = <token yang sama untuk SEMUA host>
 
 ~/.cli-approval-gateway/secret-bundles.json
-└── ["default", "pe-server", "server-2"]   # hanya NAMA bundle, bukan secret — untuk enumerasi 'pw list'
+└── ["default", "abcd-server", "efgh-server"]   # hanya NAMA bundle, bukan secret — untuk enumerasi 'pw list'
 ```
 
 Resolusi `{{pw:tag}}` per request mengikuti host tujuan request itu sendiri, bukan host lain yang mungkin lagi diproses di waktu berdekatan:
 
 ```
-Request A  #GATEWAY-HOST: pe-server        Request B  #GATEWAY-HOST: server-2
+Request A  #GATEWAY-HOST: abcd-server        Request B  #GATEWAY-HOST: efgh-server
   {{pw:sudo}}                                 {{pw:sudo}}
-    → cek bundle "pe-server" → ADA              → cek bundle "server-2" → ADA
-    → pakai sudo milik pe-server                → pakai sudo milik server-2 (nilai beda)
+    → cek bundle "abcd-server" → ADA              → cek bundle "efgh-server" → ADA
+    → pakai sudo milik abcd-server                → pakai sudo milik efgh-server (nilai beda)
 
   {{pw:github_token}}                         {{pw:github_token}}
-    → cek bundle "pe-server" → tidak ada        → cek bundle "server-2" → tidak ada
+    → cek bundle "abcd-server" → tidak ada        → cek bundle "efgh-server" → tidak ada
     → fallback bundle "default" → ADA           → fallback bundle "default" → ADA
     → pakai github_token yang sama              → pakai github_token yang sama
 ```
 
 Jadi tag dengan nama sama (`sudo`) boleh punya nilai berbeda di tiap host tanpa tabrakan, sementara tag yang memang dimaksud lintas-host (`github_token`) cukup disimpan sekali di bundle `default`. Menambah server baru hanya perlu `pw add <tag> --host <host-baru>` — tidak ada konfigurasi tambahan di luar Keychain untuk mendaftarkan host tersebut.
 
-Catatan: "multi-server" di sini berarti setiap request bisa menargetkan host berbeda secara independen lewat `#GATEWAY-HOST:` dan password-nya ter-resolve otomatis ke bundle yang benar — bukan berarti watcher mengeksekusi beberapa request secara **konkuren**. Satu instance gateway masih memproses antrean `requests/` satu per satu secara berurutan; request ke `server-2` dan `pe-server` yang masuk bersamaan akan tetap diproses bergantian, bukan paralel di thread terpisah.
+Catatan: "multi-server" di sini berarti setiap request bisa menargetkan host berbeda secara independen lewat `#GATEWAY-HOST:` dan password-nya ter-resolve otomatis ke bundle yang benar — bukan berarti watcher mengeksekusi beberapa request secara **konkuren**. Satu instance gateway masih memproses antrean `requests/` satu per satu secara berurutan; request ke `efgh-server` dan `abcd-server` yang masuk bersamaan akan tetap diproses bergantian, bukan paralel di thread terpisah.
 
 ```bash
-cli-approval-gateway pw add sudo --host pe-server      # tambah/ganti nilai di bundle 'pe-server'
+cli-approval-gateway pw add sudo --host abcd-server      # tambah/ganti nilai di bundle 'abcd-server'
 cli-approval-gateway pw add sudo --host default        # password sama untuk semua host tanpa bundle sendiri
-cli-approval-gateway pw edit sudo --host pe-server      # alias add
+cli-approval-gateway pw edit sudo --host abcd-server      # alias add
 cli-approval-gateway pw list                           # semua bundle + nama tag di tiap bundle
-cli-approval-gateway pw list --host pe-server           # nama tag di satu bundle saja
-cli-approval-gateway pw show sudo --host pe-server      # periksa apakah tag ada di bundle itu
-cli-approval-gateway pw reveal sudo --host pe-server    # tampilkan nilai setelah autentikasi
-cli-approval-gateway pw remove sudo --host pe-server    # hapus tag dari bundle
-cli-approval-gateway pw delete sudo --host pe-server    # alias remove
-cli-approval-gateway pw rename db_prod db_prod_readonly_password --host pe-server  # ganti nama tag, nilai password tetap sama
+cli-approval-gateway pw list --host abcd-server           # nama tag di satu bundle saja
+cli-approval-gateway pw show sudo --host abcd-server      # periksa apakah tag ada di bundle itu
+cli-approval-gateway pw reveal sudo --host abcd-server    # tampilkan nilai setelah autentikasi
+cli-approval-gateway pw remove sudo --host abcd-server    # hapus tag dari bundle
+cli-approval-gateway pw delete sudo --host abcd-server    # alias remove
+cli-approval-gateway pw rename db_prod db_prod_readonly_password --host abcd-server  # ganti nama tag, nilai password tetap sama
 ```
 
 `reveal` mencetak password ke stdout: gunakan hanya secara langsung oleh operator di terminal yang aman, bukan melalui tool agent atau di chat. `add` dan `edit` mengganti nilai tag yang sudah ada di bundle yang sama. `rename` memindahkan nama tag lama ke nama baru dalam bundle yang sama tanpa membaca atau mengubah password; perintah gagal jika tag lama tidak ditemukan atau nama baru sudah dipakai.
 
 ### Placeholder dan password per host
 
-Gunakan `{{pw:tag}}` dalam file request; gateway menggantinya di memori setelah autentikasi dan sebelum mengirim script ke SSH. Nama tag dalam placeholder mendukung huruf, angka, `_`, dan `-`. Untuk request ke host `server-2`, gateway cek dulu apakah bundle `server-2` punya tag tersebut; kalau tidak ada, fallback ke bundle `default`. Simpan nilai khusus host misalnya dengan:
+Gunakan `{{pw:tag}}` dalam file request; gateway menggantinya di memori setelah autentikasi dan sebelum mengirim script ke SSH. Nama tag dalam placeholder mendukung huruf, angka, `_`, dan `-`. Untuk request ke host `efgh-server`, gateway cek dulu apakah bundle `efgh-server` punya tag tersebut; kalau tidak ada, fallback ke bundle `default`. Simpan nilai khusus host misalnya dengan:
 
 ```bash
-cli-approval-gateway pw add sudo --host server-2
+cli-approval-gateway pw add sudo --host efgh-server
 ```
 
 Substitusi adalah penggantian teks mentah, bukan escaping shell. Karakter khusus dalam password dapat mengubah sintaks atau perilaku script. Command yang mencetak atau menyimpan password juga dapat membocorkannya melalui output, server, atau file respons; rancang dan tinjau command dengan hati-hati.
@@ -314,13 +314,13 @@ Setiap repo yang memakai gateway ini (satu host atau lebih) sebaiknya punya cata
 ```markdown
 # Tag gateway untuk repo ini
 
-Host: pe-server
-- sudo        -> password sudo pe-server
-- db_prod     -> password database production pe-server
+Host: abcd-server
+- sudo        -> password sudo abcd-server
+- db_prod     -> password database production abcd-server
 
-Host: server-2
-- sudo        -> password sudo server-2 (beda dari pe-server)
-- api_key     -> token API server-2
+Host: efgh-server
+- sudo        -> password sudo efgh-server (beda dari abcd-server)
+- api_key     -> token API efgh-server
 
 Bundle default (lintas-host)
 - github_token

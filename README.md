@@ -68,6 +68,30 @@ Saat dimulai, gateway membuat direktori berikut di `~/.cli-approval-gateway/`:
 | `processed/` | File request yang sudah mencapai status terminal (response tersimpan). |
 | `audit.log` | Catatan transaksi dalam format JSON Lines. |
 
+Untuk memeriksa state request tanpa mengubah data, jalankan
+`cli-approval-gateway status <id>`. Hasil menunjukkan antrean, processing
+(termasuk tahap bila tersedia), response terminal, atau bukti processed tanpa
+response. Exit code bukan nol menandakan ID tidak valid, tidak ditemukan, atau
+state rusak/tidak dapat dibaca. Hasil adalah snapshot; status processing tidak
+menjamin watcher masih berjalan. Perintah dapat dijalankan saat watcher aktif.
+
+Untuk mencari audit saat ini dan rotasi `audit.log.1`, gunakan filter opsional
+yang digabungkan dengan AND. Tanggal dihitung menurut UTC; output memuat command
+mentah dan dapat bersifat sensitif.
+
+```sh
+cli-approval-gateway audit search --host pe-server --date 2026-01-01 --approved true
+```
+
+Periksa koneksi secara eksplisit dengan `cli-approval-gateway host check <host>`.
+Perintah ini memakai SSH noninteraktif, tidak mengubah known_hosts, membatasi
+waktu, mengautentikasi, dan menjalankan `true` di remote. Konfigurasi SSH,
+termasuk proxy dan forced command pada server, dapat memengaruhi perilakunya.
+
+Saat watcher dihentikan dengan `s`, ringkasan menampilkan jumlah berhasil,
+gagal, dan ditolak yang diselesaikan dalam sesi tersebut. Recovery startup
+tidak dihitung; ringkasan tidak dijamin saat crash dan bukan pengganti audit.
+
 Untuk menghapus semua file response JSON atau mengosongkan audit log, hentikan
 watcher terlebih dahulu, lalu jalankan perintah yang diperlukan:
 
@@ -79,6 +103,22 @@ cli-approval-gateway clear-audit
 Penghapusan response tidak menghapus request di `processed/`, sehingga ID
 yang sudah diproses tetap tidak dapat digunakan ulang. Penghapusan audit dan
 response dilakukan terpisah dan tidak dapat dibatalkan melalui gateway.
+Perintah meminta konfirmasi interaktif (`y` atau `yes`). Untuk skrip yang
+memang berwenang menghapus, tambahkan `--yes` secara eksplisit; tanpa flag,
+input nonterminal ditolak. Lock watcher tetap berlaku.
+
+```sh
+cli-approval-gateway clear-responses --yes
+cli-approval-gateway clear-audit --yes
+```
+
+Jalankan `cli-approval-gateway doctor` untuk memeriksa konfigurasi, direktori,
+SSH lokal, dan metadata Keychain tanpa membuat data atau membaca password.
+Hasil adalah snapshot, tidak menguji koneksi SSH atau menjamin akses secret.
+Keychain tanpa item yang dapat diperiksa dilaporkan tidak dapat dipastikan;
+masalah maupun hasil yang tidak dapat dipastikan menghasilkan exit code bukan nol.
+Exit code nol berarti semua pemeriksaan berhasil. Doctor tetap dapat dijalankan
+saat watcher aktif dan tidak mengambil lock watcher.
 
 Untuk membersihkan pasangan response dan request yang sudah lama selesai,
 gunakan jumlah hari sebagai ambang. Kedua file harus lebih tua dari ambang;
@@ -128,7 +168,7 @@ server.
 
 Jika eksekusi melewati `GATEWAY_SSH_TIMEOUT_SECONDS`, gateway menghentikan
 proses SSH dan menyimpan response `status: "timed-out"` bersama output parsial.
-Watcher kemudian melanjutkan antrean. Karena hasil remote bisa tidak lengkap,
+Watcher kemudian melanjutkan antrean. Hasil remote mungkin tidak diketahui,
 periksa server sebelum mengirim ulang dengan ID baru.
 
 Saat idle, watcher mencetak heartbeat setiap `GATEWAY_IDLE_HEARTBEAT_SECONDS`
@@ -273,7 +313,7 @@ Gateway tidak menyediakan identitas atau otorisasi khusus per agent; akses ke fo
 - Autentikasi menggunakan kebijakan `deviceOwnerAuthentication` macOS, yang dapat menggunakan password perangkat sebagai fallback. Dialog tidak selalu muncul untuk setiap operasi, bergantung pada perilaku autentikasi macOS.
 - Item Keychain tidak memiliki ACL biometrik khusus; pemeriksaan autentikasi sebelum pengambilan password diterapkan dalam kode gateway. Jangan menganggapnya sebagai perlindungan biometrik yang dipaksakan langsung oleh Keychain terhadap semua akses lain.
 - Audit menyimpan command mentah termasuk placeholder, bukan hasil substitusi. Namun output server disimpan dalam respons dan dapat mengandung informasi sensitif. Jangan menaruh password asli dalam request.
-- Watcher memproses request secara berurutan dan belum menyediakan timeout approval, rotasi audit, atau pembatasan command. Hak akses folder, keamanan SSH, dan penanganan data di server tetap menjadi tanggung jawab operator.
+- Watcher memproses request secara berurutan dan belum menyediakan timeout approval atau pembatasan command. Hak akses folder, keamanan SSH, dan penanganan data di server tetap menjadi tanggung jawab operator.
 
 ## Struktur proyek
 

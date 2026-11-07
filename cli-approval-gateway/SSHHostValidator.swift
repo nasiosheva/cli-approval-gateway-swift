@@ -7,6 +7,13 @@ protocol SSHHostValidating {
     func isValid(_ host: String) -> Bool
 }
 
+func sshHasMatchingAlias(_ diagnostics: String) -> Bool {
+    diagnostics.components(separatedBy: .newlines).contains { line in
+        guard let range = line.range(of: "Applying options for ") else { return false }
+        return line[range.upperBound...].trimmingCharacters(in: .whitespaces) != "*"
+    }
+}
+
 struct SSHHostValidator: SSHHostValidating {
     private let sshConfigURL: URL?
     private let hostnameResolver: (String) -> Bool
@@ -39,18 +46,13 @@ struct SSHHostValidator: SSHHostValidating {
         guard result.exitCode == 0, !result.timedOut else { return false }
 
         var options: [String: String] = [:]
-        for line in result.stdout.split(separator: "\n") {
+        for line in result.stdout.components(separatedBy: .newlines) {
             let parts = line.split(separator: " ", maxSplits: 1)
             guard parts.count == 2 else { continue }
             options[String(parts[0])] = String(parts[1])
         }
         let resolvedHost = options["hostname"] ?? candidate
-        let hasMatchingSSHAlias = result.stderr
-            .split(separator: "\n")
-            .contains { line in
-                guard let range = line.range(of: "Applying options for ") else { return false }
-                return line[range.upperBound...].trimmingCharacters(in: .whitespaces) != "*"
-            }
+        let hasMatchingSSHAlias = sshHasMatchingAlias(result.stderr)
         let usesProxy = (options["proxycommand"] ?? "none") != "none"
             || (options["proxyjump"] ?? "none") != "none"
         return hasMatchingSSHAlias || usesProxy || resolvedHost != candidate || hostnameResolver(resolvedHost)

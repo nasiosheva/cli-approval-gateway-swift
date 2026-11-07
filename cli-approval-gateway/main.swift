@@ -91,17 +91,31 @@ func printTopLevelHelp() {
       `aborted-before-execution`, `timed-out`, `host-unknown` — semuanya berarti command TIDAK
       dijalankan ulang otomatis; kirim request baru dengan ID BARU kalau
       masih perlu, jangan pakai ID yang sama.
+      Saat `timed-out`, hasil remote mungkin tidak diketahui; periksa server
+      sebelum mencoba ulang.
 
     SUBCOMMAND:
       cli-approval-gateway                 Jalankan watcher (loop utama, perlu operator jaga terminal)
       cli-approval-gateway pw <aksi> ...    Kelola password Keychain (jalankan 'pw' tanpa argumen untuk detail)
-      cli-approval-gateway selftest <nama>  Self-test ('ssh-drain', 'ssh-timeout', 'lifecycle', 'operability') tanpa SSH/Touch ID asli
+      cli-approval-gateway selftest <nama>  Self-test ('ssh-drain', 'ssh-timeout', 'lifecycle', 'operability', 'doctor', 'inspection') tanpa SSH/Touch ID asli
       cli-approval-gateway cleanup --older-than <hari> [--dry-run]  Hapus pasangan response/request lama
-      cli-approval-gateway clear-responses  Hapus semua file response JSON
-      cli-approval-gateway clear-audit      Kosongkan audit log
+      cli-approval-gateway doctor           Periksa kesiapan lokal tanpa mengubah data
+      cli-approval-gateway status <id>      Periksa status request tanpa mengubah data
+      cli-approval-gateway audit search [--host <host>] [--date <YYYY-MM-DD>] [--approved <true|false>]  Cari audit
+      cli-approval-gateway host check <host>  Periksa koneksi SSH noninteraktif
+      cli-approval-gateway clear-responses [--yes]  Hapus semua file response JSON
+      cli-approval-gateway clear-audit [--yes]      Kosongkan audit log
       cli-approval-gateway --help | -h      Tampilkan bantuan ini
 
-      Saat watcher berjalan, tekan s atau Ctrl-C untuk berhenti.
+      Saat watcher berjalan, tekan s untuk berhenti dan melihat ringkasan sesi.
+      Ringkasan hanya mencakup hasil sesi ini, bukan recovery atau audit permanen.
+      Host check mengautentikasi SSH dan menjalankan `true` di remote; konfigurasi
+      SSH, termasuk proxy atau forced command, dapat memengaruhi perilakunya.
+      Doctor dapat berjalan saat watcher aktif; hasilnya snapshot metadata,
+      tidak menguji koneksi SSH atau akses secret. Masalah atau hasil yang
+      tidak dapat dipastikan menghasilkan exit code bukan nol.
+      Penghapusan memerlukan konfirmasi terminal atau --yes untuk otomasi,
+      dan tetap memerlukan lock watcher.
 
       Argumen pertama selain di atas (termasuk typo) ditolak dengan error
       ke stderr dan exit code 2 — TIDAK akan diam-diam menjalankan watcher.
@@ -145,10 +159,35 @@ if arguments.count > 1, arguments[1] == "selftest" {
     runSelfTestSubcommand(Array(arguments.dropFirst(2)))
 }
 
-let knownSubcommands = ["pw", "selftest", "cleanup", "clear-responses", "clear-audit", "--help", "-h", "help"]
+if arguments.count > 1, arguments[1] == "doctor" {
+    guard arguments.count == 2 else {
+        FileHandle.standardError.write("Doctor tidak menerima argumen tambahan.\n".data(using: .utf8)!)
+        exit(2)
+    }
+    exit(runDoctor() ? 0 : 1)
+}
+
+if arguments.count > 1, arguments[1] == "status" {
+    runRequestStatusSubcommand(Array(arguments.dropFirst(2)))
+}
+
+if arguments.count > 1, arguments[1] == "audit" { runAuditSearch(Array(arguments.dropFirst(2))) }
+if arguments.count > 1, arguments[1] == "host" { runHostCheck(Array(arguments.dropFirst(2))) }
+
+let knownSubcommands = ["pw", "selftest", "doctor", "status", "audit", "host", "cleanup", "clear-responses", "clear-audit", "--help", "-h", "help"]
 if arguments.count > 1, !knownSubcommands.contains(arguments[1]) {
     FileHandle.standardError.write("Argumen tidak dikenal: '\(arguments[1])'\nJalankan 'cli-approval-gateway --help' untuk daftar subcommand yang valid, atau tanpa argumen untuk start watcher.\n".data(using: .utf8)!)
     exit(2)
+}
+
+let isClear = arguments.count > 1 && ["clear-responses", "clear-audit"].contains(arguments[1])
+if isClear && !(arguments.count == 2 || (arguments.count == 3 && arguments[2] == "--yes")) {
+    FileHandle.standardError.write("Penggunaan: \(arguments[1]) [--yes]\n".data(using: .utf8)!)
+    exit(2)
+}
+if isClear && arguments.count == 2 && isatty(STDIN_FILENO) != 1 {
+    FileHandle.standardError.write("Konfirmasi membutuhkan terminal interaktif; gunakan --yes untuk otomasi.\n".data(using: .utf8)!)
+    exit(1)
 }
 
 let config = GatewayConfig.load()
@@ -165,10 +204,16 @@ do {
     exit(1)
 }
 
-if arguments.count > 1, ["clear-responses", "clear-audit"].contains(arguments[1]) {
-    guard arguments.count == 2 else {
-        FileHandle.standardError.write("Subcommand ini tidak menerima argumen tambahan.\n".data(using: .utf8)!)
-        exit(2)
+if isClear {
+    if arguments.count == 2 {
+        let target = arguments[1] == "clear-responses" ? config.responsesDir.path : config.auditLogURL.path
+        print("Hapus data di \(target)? [y/N] ", terminator: "")
+        fflush(stdout)
+        let answer = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard answer == "y" || answer == "yes" else {
+            print("Penghapusan dibatalkan.")
+            exit(1)
+        }
     }
     do {
         let fm = FileManager.default
@@ -199,6 +244,7 @@ if arguments.count > 1, arguments[1] == "cleanup" {
 
 let executor = SSHExecutor(timeoutSeconds: config.sshTimeoutSeconds)
 let logger = AuditLogger(url: config.auditLogURL, maxBytes: config.auditLogMaxBytes)
+let sessionSummary = SessionSummary()
 
 print("cli-approval-gateway berjalan.")
 print("Requests folder  : \(config.requestsDir.path)")
@@ -231,15 +277,16 @@ while true {
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
 
         for fileURL in shFiles {
-            handleCandidateRequest(fileURL: fileURL, config: config, gate: gate, executor: executor, logger: logger, secrets: secretStore, hostValidator: SSHHostValidator(), notifier: { _ = sendApprovalNotification(id: $0, host: $1) })
+            handleCandidateRequest(fileURL: fileURL, config: config, gate: gate, executor: executor, logger: logger, secrets: secretStore, hostValidator: SSHHostValidator(), notifier: { _ = sendApprovalNotification(id: $0, host: $1) }, outcome: { sessionSummary.record($0) })
         }
         if !shFiles.isEmpty {
             lastHeartbeat = Date()
+        } else if let heartbeat = idleHeartbeatIfDue(lastHeartbeat: &lastHeartbeat, interval: config.idleHeartbeatSeconds) {
+            print(heartbeat)
         }
-    } else if let heartbeat = idleHeartbeatIfDue(lastHeartbeat: &lastHeartbeat, interval: config.idleHeartbeatSeconds) {
-        print(heartbeat)
     }
     if waitForStopKey(seconds: config.pollIntervalSeconds) {
+        sessionSummary.printSummary()
         print("Watcher dihentikan.")
         break
     }

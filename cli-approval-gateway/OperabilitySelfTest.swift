@@ -1,6 +1,7 @@
 // Mories Deo Hutapea,S.E.,S.Kom
 
 import Foundation
+import Security
 
 private struct SelfTestHostValidator: SSHHostValidating {
     let valid: Bool
@@ -90,6 +91,10 @@ func runOperabilitySelfTest() -> Bool {
     }
 
     print("[selftest] Skenario: timeout subprocess dan output parsial")
+    check(doctorKeychainResult(errSecSuccess) == .available, "metadata Keychain yang tersedia harus dikenali")
+    check(doctorKeychainResult(errSecItemNotFound) == .uncertain, "Keychain tanpa item tidak membuktikan akses")
+    check(doctorKeychainResult(errSecInteractionNotAllowed) == .uncertain, "Keychain yang memerlukan interaksi tidak dapat dipastikan")
+    check(doctorKeychainResult(errSecParam) == .failed, "kegagalan Keychain harus dikenali")
     check(runSSHTimeoutSelfTest(), "timeout harus menghentikan proses dan mempertahankan output parsial")
 
     print("[selftest] Skenario: heartbeat hanya dicetak setelah interval idle")
@@ -101,6 +106,8 @@ func runOperabilitySelfTest() -> Bool {
     check(idleHeartbeatIfDue(lastHeartbeat: &lastHeartbeat, now: heartbeatStart.addingTimeInterval(301), interval: 300) == nil, "heartbeat tidak boleh berulang setiap iterasi polling")
 
     print("[selftest] Skenario: validasi alias SSH dan penolakan host tidak dikenal")
+    check(!sshHasMatchingAlias("debug1: Applying options for *\r\ndebug1: done\r\n"), "konfigurasi wildcard CRLF tidak boleh dianggap alias")
+    check(sshHasMatchingAlias("debug1: Applying options for selftest-alias\r\n"), "alias SSH CRLF harus dikenali")
     let configURL = FileManager.default.temporaryDirectory.appendingPathComponent("ssh-config-selftest-\(UUID().uuidString)")
     do {
         try "Host selftest-alias\n  HostName 192.0.2.10\n".write(to: configURL, atomically: true, encoding: .utf8)
@@ -132,8 +139,13 @@ func runOperabilitySelfTest() -> Bool {
         let response = context.response(id: id)
         check(response?["status"] as? String == "timed-out", "response harus mencatat status timed-out")
         check(response?["stdout"] as? String == "parsial", "response timeout harus menyimpan output parsial")
+        check((response?["stderr"] as? String)?.contains("Hasil remote mungkin tidak diketahui") == true, "response timeout harus memperingatkan hasil remote")
         check(FileManager.default.fileExists(atPath: context.config.processedDir.appendingPathComponent("\(id).sh").path), "request timeout harus difinalisasi ke processed/")
         check(!FileManager.default.fileExists(atPath: context.config.processingDir.appendingPathComponent("\(id).sh").path), "request timeout tidak boleh tertinggal di processing/")
+        context.writeRequest(id: "after-timeout")
+        let nextExecutor = SelfTestCommandExecutor(result: CommandResult(exitCode: 0, stdout: "ok", stderr: ""))
+        handleCandidateRequest(fileURL: context.config.requestsDir.appendingPathComponent("after-timeout.sh"), config: context.config, gate: gate, executor: nextExecutor, logger: context.logger, secrets: context.secrets, hostValidator: SelfTestHostValidator(valid: true))
+        check(context.response(id: "after-timeout")?["exitCode"] as? Int == 0, "request berikutnya harus diproses setelah timeout")
     } catch {
         check(false, "gagal menyiapkan self-test timeout lifecycle: \(error)")
     }

@@ -102,6 +102,7 @@ private final class LifecycleSelfTestRunner {
         scenarioRestartAfterSSHStarted()
         scenarioRestartAfterResponseWritten()
         scenarioDuplicateIDNotReexecuted()
+        scenarioSessionSummary()
 
         if failures.isEmpty {
             print("[selftest] BERHASIL: semua skenario lifecycle lulus.")
@@ -110,6 +111,27 @@ private final class LifecycleSelfTestRunner {
             print("[selftest] GAGAL: \(failures.count) skenario tidak lulus.")
             return false
         }
+    }
+
+    private func scenarioSessionSummary() {
+        let ctx = LifecycleTestContext.make(label: "summary")
+        defer { ctx.cleanup() }
+        let summary = SessionSummary()
+        let executor = FakeCommandExecutor()
+        for (id, approved, code) in [("ok", true, Int32(0)), ("fail", true, Int32(1)), ("reject", false, Int32(0))] {
+            executor.resultToReturn = CommandResult(exitCode: code, stdout: "", stderr: "")
+            ctx.writeRequest(id: id)
+            handleCandidateRequest(fileURL: ctx.config.requestsDir.appendingPathComponent("\(id).sh"), config: ctx.config, gate: FixedApprovalGate(result: approved), executor: executor, logger: ctx.logger, secrets: ctx.secrets, outcome: { summary.record($0) })
+        }
+        check(summary.succeeded == 1 && summary.failed == 1 && summary.rejected == 1, "summary: tiap outcome terminal dihitung sekali")
+        try? "echo recovery".write(to: ctx.config.processingDir.appendingPathComponent("recovery.sh"), atomically: true, encoding: .utf8)
+        recoverInterruptedRequests(config: ctx.config, logger: ctx.logger)
+        check(summary.succeeded == 1 && summary.failed == 1 && summary.rejected == 1, "summary: recovery tidak dihitung")
+        try? FileManager.default.removeItem(at: ctx.config.responsesDir)
+        try? "rusak".write(to: ctx.config.responsesDir, atomically: true, encoding: .utf8)
+        ctx.writeRequest(id: "write-fail")
+        handleCandidateRequest(fileURL: ctx.config.requestsDir.appendingPathComponent("write-fail.sh"), config: ctx.config, gate: FixedApprovalGate(result: true), executor: executor, logger: ctx.logger, secrets: ctx.secrets, outcome: { summary.record($0) })
+        check(summary.succeeded == 1 && summary.failed == 1 && summary.rejected == 1, "summary: response gagal ditulis tidak dihitung")
     }
 
     private func scenarioApprovalRejected() {

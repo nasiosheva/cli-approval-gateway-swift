@@ -83,7 +83,7 @@ func requestIDHasExistingState(_ id: String, config: GatewayConfig) -> Bool {
 /// ID sudah dipakai sebelumnya: tolak tanpa approval/eksekusi, keluarkan
 /// request dari `requests/`, dan tulis response penolakan bila belum ada
 /// response terminal untuk ID tersebut.
-func rejectDuplicateRequest(fileURL: URL, id: String, config: GatewayConfig) {
+func rejectDuplicateRequest(fileURL: URL, id: String, config: GatewayConfig, outcome: ([String: Any]) -> Void = { _ in }) {
     reportRequestError(id: id, stage: "claim", "ID sudah memiliki state (processing/processed/responses); request baru dengan ID yang sama ditolak.")
 
     let responseURL = config.responsesDir.appendingPathComponent("\(id).json")
@@ -102,6 +102,7 @@ func rejectDuplicateRequest(fileURL: URL, id: String, config: GatewayConfig) {
         do {
             try writeResponseAtomic(id: id, payload: payload, to: config.responsesDir)
             printResponseSummary(id: id, payload: payload)
+            outcome(payload)
         } catch {
             reportRequestError(id: id, stage: "duplicate-response-write", "\(error)")
         }
@@ -139,11 +140,11 @@ func claimRequest(fileURL: URL, config: GatewayConfig) -> URL? {
 
 /// Pindahkan satu file request kandidat dari `requests/` ke pemrosesan penuh.
 /// Menangani deteksi ID duplikat lalu klaim atomik sebelum approval.
-func handleCandidateRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGating, executor: CommandExecuting, logger: AuditLogger, secrets: SecretStore, hostValidator: SSHHostValidating? = nil, notifier: (String, String) -> Void = { _, _ in }) {
+func handleCandidateRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGating, executor: CommandExecuting, logger: AuditLogger, secrets: SecretStore, hostValidator: SSHHostValidating? = nil, notifier: (String, String) -> Void = { _, _ in }, outcome: ([String: Any]) -> Void = { _ in }) {
     let id = fileURL.deletingPathExtension().lastPathComponent
 
     if requestIDHasExistingState(id, config: config) {
-        rejectDuplicateRequest(fileURL: fileURL, id: id, config: config)
+        rejectDuplicateRequest(fileURL: fileURL, id: id, config: config, outcome: outcome)
         return
     }
 
@@ -151,7 +152,7 @@ func handleCandidateRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalG
         return
     }
 
-    processClaimedRequest(fileURL: claimedURL, config: config, gate: gate, executor: executor, logger: logger, secrets: secrets, hostValidator: hostValidator, notifier: notifier)
+    processClaimedRequest(fileURL: claimedURL, config: config, gate: gate, executor: executor, logger: logger, secrets: secrets, hostValidator: hostValidator, notifier: notifier, outcome: outcome)
 }
 
 // MARK: - Finalize (move to processed/)
@@ -172,7 +173,7 @@ func finalizeProcessing(id: String, fileURL: URL, config: GatewayConfig) {
 
 // MARK: - Request processing (request sudah diklaim, berada di processing/)
 
-func processClaimedRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGating, executor: CommandExecuting, logger: AuditLogger, secrets: SecretStore, hostValidator: SSHHostValidating?, notifier: (String, String) -> Void) {
+func processClaimedRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGating, executor: CommandExecuting, logger: AuditLogger, secrets: SecretStore, hostValidator: SSHHostValidating?, notifier: (String, String) -> Void, outcome: ([String: Any]) -> Void = { _ in }) {
     let id = fileURL.deletingPathExtension().lastPathComponent
 
     guard let rawCommand = try? String(contentsOf: fileURL, encoding: .utf8) else {
@@ -208,7 +209,7 @@ func processClaimedRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGa
             "stderr": "Host SSH tidak dikenal atau tidak dapat di-resolve.",
             "status": "host-unknown"
         ]
-        finishProcessing(id: id, fileURL: fileURL, payload: payload, config: config)
+        finishProcessing(id: id, fileURL: fileURL, payload: payload, config: config, outcome: outcome)
         return
     }
 
@@ -232,7 +233,7 @@ func processClaimedRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGa
             payload["stdout"] = ""
             payload["stderr"] = "Gagal mencatat status sebelum eksekusi; command tidak dijalankan untuk mencegah eksekusi tanpa jejak recovery."
             payload["status"] = "aborted-before-execution"
-            finishProcessing(id: id, fileURL: fileURL, payload: payload, config: config)
+            finishProcessing(id: id, fileURL: fileURL, payload: payload, config: config, outcome: outcome)
             return
         }
 
@@ -244,7 +245,7 @@ func processClaimedRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGa
             payload["stderr"] = result.stderr
             if result.timedOut {
                 payload["status"] = "timed-out"
-                payload["stderr"] = [result.stderr, "Waktu eksekusi SSH melewati batas dan proses dihentikan."].filter { !$0.isEmpty }.joined(separator: "\n")
+                payload["stderr"] = [result.stderr, "Waktu eksekusi SSH melewati batas dan proses lokal dihentikan. Hasil remote mungkin tidak diketahui; periksa server sebelum mencoba ulang."].filter { !$0.isEmpty }.joined(separator: "\n")
             }
             do {
                 try logger.append(AuditEntry(
@@ -283,16 +284,17 @@ func processClaimedRequest(fileURL: URL, config: GatewayConfig, gate: ApprovalGa
         }
     }
 
-    finishProcessing(id: id, fileURL: fileURL, payload: payload, config: config)
+    finishProcessing(id: id, fileURL: fileURL, payload: payload, config: config, outcome: outcome)
 }
 
 /// Tulis response secara atomik dan hanya pindahkan ke `processed/` bila
 /// penulisan berhasil. Bila gagal, request tetap di `processing/` (dengan
 /// status terakhirnya) untuk pemeriksaan manual — tidak kembali ke pending.
-private func finishProcessing(id: String, fileURL: URL, payload: [String: Any], config: GatewayConfig) {
+private func finishProcessing(id: String, fileURL: URL, payload: [String: Any], config: GatewayConfig, outcome: ([String: Any]) -> Void) {
     do {
         try writeResponseAtomic(id: id, payload: payload, to: config.responsesDir)
         printResponseSummary(id: id, payload: payload)
+        outcome(payload)
         finalizeProcessing(id: id, fileURL: fileURL, config: config)
     } catch {
         reportRequestError(id: id, stage: "response-write", "\(error). Request tetap di processing/ untuk pemeriksaan manual; TIDAK akan dijalankan ulang otomatis.")

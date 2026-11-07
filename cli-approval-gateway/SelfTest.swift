@@ -88,11 +88,13 @@ func runSSHTimeoutSelfTest() -> Bool {
 
 func runSelfTestSubcommand(_ args: [String]) -> Never {
     guard let name = args.first else {
-        FileHandle.standardError.write("Penggunaan: cli-approval-gateway selftest ssh-drain|ssh-timeout|lifecycle|operability\n".data(using: .utf8)!)
+        FileHandle.standardError.write("Penggunaan: cli-approval-gateway selftest ssh-drain|ssh-timeout|lifecycle|operability|doctor|inspection\n".data(using: .utf8)!)
         exit(2)
     }
 
     switch name {
+    case "inspection":
+        exit(runInspectionSelfTest() ? 0 : 1)
     case "ssh-drain":
         exit(runSSHDrainSelfTest() ? 0 : 1)
     case "ssh-timeout":
@@ -101,6 +103,8 @@ func runSelfTestSubcommand(_ args: [String]) -> Never {
         exit(runLifecycleSelfTest() ? 0 : 1)
     case "operability":
         exit(runOperabilitySelfTest() ? 0 : 1)
+    case "doctor":
+        exit(runDoctorSelfTest() ? 0 : 1)
     default:
         FileHandle.standardError.write("Self-test tidak dikenal: \(name)\n".data(using: .utf8)!)
         exit(2)

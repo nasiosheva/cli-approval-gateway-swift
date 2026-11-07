@@ -307,6 +307,27 @@ Agent yang memiliki akses ke folder gateway dapat membuat request dan membaca re
 
 Gateway tidak menyediakan identitas atau otorisasi khusus per agent; akses ke folder dan izin sistem operasi menentukan siapa yang dapat membuat request dan membaca respons. Jangan menganggap output command otomatis bebas dari data sensitif.
 
+### Mendokumentasikan tag per repo
+
+Setiap repo yang memakai gateway ini (satu host atau lebih) sebaiknya punya catatan lokal berisi daftar tag yang relevan untuk host tersebut, misalnya `.cli-approval-gateway-tags.md` di root repo, lalu tambahkan ke `.gitignore` (atau exclude lokal) karena isinya memetakan tag ke host nyata dan tidak perlu ikut ter-commit/terbagi ke repo lain. Contoh isi:
+
+```markdown
+# Tag gateway untuk repo ini
+
+Host: pe-server
+- sudo        -> password sudo pe-server
+- db_prod     -> password database production pe-server
+
+Host: server-2
+- sudo        -> password sudo server-2 (beda dari pe-server)
+- api_key     -> token API server-2
+
+Bundle default (lintas-host)
+- github_token
+```
+
+Dengan catatan ini, AI agent yang bekerja di repo tersebut dapat langsung memakai `{{pw:tag}}` yang sudah terdaftar tanpa harus menjalankan `pw list` atau menebak-nebak nama tag setiap kali membuat request baru. Perbarui file ini setiap kali tag baru ditambahkan atau diganti nama (`pw add`/`pw rename`) agar tetap sinkron dengan isi bundle sebenarnya di Keychain.
+
 ## Keamanan dan batasan
 
 - Baca command dan host yang ditampilkan sebelum menyetujui. Gateway tidak membatasi jenis command yang dapat dijalankan setelah disetujui.
